@@ -32,6 +32,8 @@ class Publisher:
 
         detections: {"point": [{"x","y","score"}, ...], "bbox": [...]}
         Coordinates are in the edge sensor frame (e.g. FHD crop).
+        timestamp: Unix epoch seconds (float). Edge wall-clock anchored to
+        the first frame, then advanced by GStreamer PTS deltas.
         """
         payload = {
             "camera_name": self.camera_name,
