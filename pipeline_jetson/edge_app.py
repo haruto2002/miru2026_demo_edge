@@ -52,6 +52,29 @@ def dets_to_payload(dets: np.ndarray) -> dict:
     return {"point": points, "bbox": []}
 
 
+class PtsUnixEpochClock:
+    """Map GStreamer PTS (relative) to Unix epoch while keeping PTS intervals.
+
+    The first sample anchors wall-clock time; later samples are
+    ``t0 + (pts - pts0)`` so frame spacing follows media time, not
+    processing jitter.
+    """
+
+    def __init__(self) -> None:
+        self._base_wall: float | None = None
+        self._base_pts: float | None = None
+
+    def reset(self) -> None:
+        self._base_wall = None
+        self._base_pts = None
+
+    def to_unix(self, pts: float) -> float:
+        if self._base_wall is None or self._base_pts is None:
+            self._base_wall = time.time()
+            self._base_pts = float(pts)
+        return self._base_wall + (float(pts) - self._base_pts)
+
+
 def draw_detections(
     bgr: np.ndarray,
     dets: np.ndarray,
@@ -163,6 +186,8 @@ class EdgeApp:
         n = 0
         t_wait = t_det = t_pub = t_disp = 0.0
         t0_all = time.perf_counter()
+        # Anchor once per run (capture start). PTS resets need a new run.
+        epoch_clock = PtsUnixEpochClock()
 
         try:
             while not self._stop.is_set():
@@ -182,11 +207,14 @@ class EdgeApp:
                     break
 
                 nv12, seq, pts = item
+                timestamp = epoch_clock.to_unix(pts)
                 dets = self.detector.infer(nv12)
                 t2 = time.perf_counter()
 
                 if self.publisher is not None:
-                    self.publisher.publish_detections(seq, pts, dets_to_payload(dets))
+                    self.publisher.publish_detections(
+                        seq, timestamp, dets_to_payload(dets)
+                    )
                 t3 = time.perf_counter()
 
                 if self.display_enabled:
