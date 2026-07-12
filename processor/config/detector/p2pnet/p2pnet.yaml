@@ -1,0 +1,9 @@
+_target_: processor.detector.p2pnet.P2PNetDetector
+
+cfg_path: processor/modules/detector/p2pnet/conf/p2p.yaml
+weight_path: weights/p2pnet/cutout.pth
+device: cuda:0
+dtype: float16
+threshold: 0.1
+img_size: [1080, 1920] # (height, width)
+# img_size: null

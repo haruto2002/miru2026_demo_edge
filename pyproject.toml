@@ -1,0 +1,55 @@
+[project]
+name = "jetson"
+version = "2026.07"
+description = "Realtime-Processing-System-for-Crowd-Analysis for jetson"
+readme = "README.md"
+requires-python = ">=3.8,<3.9"
+authors = [
+  { name = "Haruto Nakayama", email = "nakayama.haruto@aist.go.jp" }
+]
+license = { file = "LICENSE" }
+
+dependencies = [
+  "matplotlib",
+  "numpy",
+  "PyYAML",
+
+  # Jetson AGX Orin / JetPack 5.1.2 / Python 3.8
+  "torch @ https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl",
+
+  # ultralytics が torchvision を要求するため必要
+  # torch 2.1.x に対応する torchvision 0.16 系に固定する
+  "torchvision==0.16.1",
+
+  "hydra-core",
+  "omegaconf",
+  "tqdm",
+  "pydantic",
+  "opencv-python",
+  "pandas",
+  "scipy",
+
+  # cython_bbox / lap のソースビルドに必要
+  "cython",
+  "lap",
+  "cython_bbox",
+  "ultralytics>=8.4.42",
+  "paho-mqtt",
+
+  "onnx",
+  "onnxruntime",
+  # tensorrt は pip で入れない。JetPack 付属の TensorRT 8.5.2 (/usr/lib/python3.8/
+  # dist-packages/tensorrt) をシステムサイトパッケージ経由で使う。
+  # PyPI の tensorrt は CUDA13 向け 11.x を落とそうとして aarch64 では失敗する。
+]
+
+[tool.uv]
+package = false
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'aarch64'"
+]
+# torchvision==0.16.1 は torch==2.1.1 を要求するが、Jetson 用 torch は 2.1.0a0 のため
+# torch を Jetson wheel に固定して torchvision の torch 制約を上書きする
+override-dependencies = [
+  "torch @ https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl",
+]
