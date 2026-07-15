@@ -18,6 +18,8 @@ RTSP / 動画
 - MQTT トピック `camera/<camera_name>` に検出点 `(x, y, score)` を JSON で配信
 - 任意で検出オーバーレイを `nveglglessink` 等に表示可能
 
+実装レベルのフロー・工程別詳細・MQTT 契約などは [docs/](docs/README.md) を参照。
+
 ## 前提環境
 
 | 項目 | 内容 |
@@ -192,3 +194,14 @@ gst-launch-1.0 -v \
   rtph265depay ! h265parse ! nvv4l2decoder ! \
   fakesink sync=false
 ```
+
+## 詳細ドキュメント
+
+実装レベルのパイプライン説明は [docs/](docs/README.md) にあります。
+
+| 文書 | 内容 |
+|------|------|
+| [docs/01_pipeline_overview.md](docs/01_pipeline_overview.md) | 全体フローと設計原則 |
+| [docs/stages/](docs/stages/) | 工程別詳細（キャプチャ・検出・MQTT など） |
+| [docs/reference/](docs/reference/) | 設定・MQTT 契約・データ契約 |
+| [docs/build/tensorrt_engine.md](docs/build/tensorrt_engine.md) | ONNX / TensorRT エンジンビルド |
