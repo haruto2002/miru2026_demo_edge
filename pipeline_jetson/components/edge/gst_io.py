@@ -25,6 +25,11 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GstApp", "1.0")
 from gi.repository import Gst, GstApp  # noqa: E402
 
+from pipeline_jetson.components.edge.nv12_homography import (
+    Nv12HomographyWarper,
+    load_homography,
+)
+
 
 def _ensure_gst():
     if not Gst.is_initialized():
@@ -50,6 +55,8 @@ class GstNv12Capture:
         transport: Optional[str] = None,
         max_buffers: int = 4,
         capture_fps: Optional[float] = None,
+        calibration_enabled: bool = False,
+        calibration_homography_path: Optional[str] = None,
     ):
         """
         Args:
@@ -61,6 +68,8 @@ class GstNv12Capture:
             capture_fps: if set, keep frames by PTS so output ≈ this rate
                 (e.g. 15 from a 30fps camera). Done in pull(), not videorate —
                 videorate stalls this RTSP+NV12 path on Jetson.
+            calibration_enabled: if True, apply homography warp after capture
+            calibration_homography_path: 3x3 matrix text file for calibration
         """
         _ensure_gst()
         self.source = source
@@ -84,6 +93,29 @@ class GstNv12Capture:
         self._eos = False
         self._last_kept_pts: Optional[float] = None
         self._fps_note = "capture_fps=native"
+        self.calibration_enabled = bool(calibration_enabled)
+        self._warper: Optional[Nv12HomographyWarper] = None
+        self._warp_out = np.empty(self.nv12_nbytes, dtype=np.uint8)
+        if self.calibration_enabled:
+            if not calibration_homography_path:
+                raise ValueError(
+                    "calibration_homography_path is required when calibration_enabled=true"
+                )
+            homography = load_homography(calibration_homography_path)
+            self._warper = Nv12HomographyWarper(
+                homography=homography,
+                width=self.w,
+                height=self.h,
+            )
+            self._calib_note = f"calibration=on path={calibration_homography_path}"
+        else:
+            self._calib_note = "calibration=off"
+
+    def _nv12_tail(self, caps: str) -> str:
+        return (
+            f"{caps} ! appsink name=sink emit-signals=false "
+            f"max-buffers={self.max_buffers} drop=false sync=false"
+        )
 
     def _build_desc(self) -> str:
         # parsebin auto-picks h264parse / h265parse (and matching depay for RTSP).
@@ -115,16 +147,18 @@ class GstNv12Capture:
         if self.is_usb:
             # UVC / V4L2 cameras typically output in system memory; keep it simple
             # and convert to packed NV12 in CPU space for appsink.
-            return (
-                f"{src} ! videoconvert ! {caps} ! "
-                f"appsink name=sink emit-signals=false "
-                f"max-buffers={self.max_buffers} drop=false sync=false"
+            return f"{src} ! videoconvert ! {self._nv12_tail(caps)}"
+        if self.calibration_enabled:
+            # Decode/convert on NVMM, then download once before appsink. Perspective
+            # warp itself runs on CUDA in pull() to avoid a BGR round-trip.
+            nvmm_caps = (
+                f"video/x-raw(memory:NVMM),format=NV12,width={self.w},height={self.h}"
             )
-        return (
-            f"{src} ! nvv4l2decoder ! nvvidconv ! {caps} ! "
-            f"appsink name=sink emit-signals=false "
-            f"max-buffers={self.max_buffers} drop=false sync=false"
-        )
+            return (
+                f"{src} ! nvv4l2decoder ! nvvidconv ! {nvmm_caps} ! "
+                f"nvvidconv ! {self._nv12_tail(caps)}"
+            )
+        return f"{src} ! nvv4l2decoder ! nvvidconv ! {self._nv12_tail(caps)}"
 
     def start(self) -> None:
         self.stop()
@@ -140,7 +174,8 @@ class GstNv12Capture:
         self._last_kept_pts = None
         print(
             f"[GST-capture] started  {self.w}x{self.h} NV12  "
-            f"max-buffers={self.max_buffers} drop=false  {self._fps_note}"
+            f"max-buffers={self.max_buffers} drop=false  {self._fps_note}  "
+            f"{self._calib_note}"
         )
 
     def stop(self) -> None:
@@ -194,6 +229,9 @@ class GstNv12Capture:
 
         pts = buf.pts
         pts_s = float(pts) / Gst.SECOND if pts != Gst.CLOCK_TIME_NONE else 0.0
+        if self._warper is not None:
+            self._warper.warp(self._host, out=self._warp_out)
+            return self._warp_out.copy(), pts_s
         return self._host.copy(), pts_s
 
     def pull(self, timeout_s: float = 5.0) -> Optional[Tuple[np.ndarray, int, float]]:

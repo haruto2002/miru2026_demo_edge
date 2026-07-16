@@ -17,6 +17,8 @@ RTSP の認証情報は実ファイルに書かれることがあるが、文書
 | `transport` | `tcp` | RTSP のプロトコル。RTSP 時は必須 |
 | `max_buffers` | `4` | appsink 深さ。満杯時は backpressure |
 | `capture_fps` | `15` または `null` | PTS スキップによる間引き。`null` で全フレーム |
+| `calibration_enabled` | `false` | `true` でホモグラフィ射影変換を有効化 |
+| `calibration_homography_path` | `calib_data/homography.txt` | 3x3 ホモグラフィ行列ファイル |
 | `prefetch` | `true` | 次フレーム host コピーと推論のオーバーラップ |
 | `prefetch_queue_size` | `2` | prefetch キュー深さ |
 | `report_every` | `30` | N フレームごとに wait/det/pub/e2e をログ |

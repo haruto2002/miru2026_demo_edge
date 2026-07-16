@@ -2,7 +2,7 @@
 
 ## 目的
 
-RTSP / 動画ファイル / USB（V4L2）をデコードし、検出器がそのまま使える packed NV12（ホスト上の `uint8` 配列）を順序どおり供給する。負荷時にフレームを捨てず、必要なら PTS ベースで意図的に間引く。
+RTSP / 動画ファイル / USB（V4L2）をデコードし、必要ならホモグラフィ射影変換を適用した packed NV12（ホスト上の `uint8` 配列）を順序どおり供給する。負荷時にフレームを捨てず、必要なら PTS ベースで意図的に間引く。
 
 ## 入出力
 
@@ -17,6 +17,7 @@ RTSP / 動画ファイル / USB（V4L2）をデコードし、検出器がその
 | クラス | ファイル | 役割 |
 |--------|----------|------|
 | `GstNv12Capture` | [`gst_io.py`](../../pipeline_jetson/components/edge/gst_io.py) | パイプライン構築と `pull` |
+| `Nv12HomographyWarper` | [`nv12_homography.py`](../../pipeline_jetson/components/edge/nv12_homography.py) | CUDA 上で NV12 射影変換 |
 | `PrefetchNv12Capture` | 同上 | 次フレームの host コピーを別スレッドで先行 |
 | `PullTimeout` | 同上 | タイムアウト例外 |
 
@@ -49,12 +50,35 @@ v4l2src device=/dev/video0
   ! appsink name=sink emit-signals=false max-buffers=N drop=false sync=false
 ```
 
+**calibration ON（RTSP / ファイル）**
+
+```
+rtspsrc/filesrc ... ! parsebin
+  ! nvv4l2decoder ! nvvidconv
+  ! video/x-raw(memory:NVMM),format=NV12,width=W,height=H
+  ! nvvidconv
+  ! video/x-raw,format=NV12,width=W,height=H
+  ! appsink ...（同上）
+  -> pull() 内で CUDA 射影変換（BGR 変換なし）
+```
+
+**calibration ON（USB）**
+
+```
+v4l2src device=/dev/video0
+  ! videoconvert
+  ! video/x-raw,format=NV12,width=W,height=H
+  ! appsink ...（同上）
+  -> pull() 内で CUDA 射影変換（BGR 変換なし）
+```
+
 要点:
 
 - `parsebin` が H.264 / H.265 と depay を自動選択
 - `drop=false` + 有限 `max-buffers` → 満杯時はデコーダ側がブロック（backpressure）。負荷でフレームを捨てない
 - `sync=false` → コンシューマの `pull` ペースで進む（パイプラインクロックに縛られない）
 - RTSP の `latency=200` は一部カメラ（i-PRO 等）で最初のフレーム到着を安定させるため
+- `calibration_enabled: true` のときは `calibration_homography_path` の 3x3 行列を読み込み、Y/UV 平面を CUDA 上で射影変換してから検出器へ渡す
 
 ### `pull()` と `capture_fps`
 
@@ -94,6 +118,8 @@ None (EOS):
 | `transport` | RTSP 必須。本番は `tcp` 推奨 |
 | `max_buffers` | appsink 深さ（例: `4`） |
 | `capture_fps` | 意図的間引き（例: `15`）。`null` で全フレーム |
+| `calibration_enabled` | ホモグラフィ射影変換の ON/OFF |
+| `calibration_homography_path` | 3x3 ホモグラフィ行列ファイル |
 | `prefetch` | prefetch ラップの ON/OFF |
 | `prefetch_queue_size` | prefetch キュー深さ（例: `2`） |
 

@@ -14,6 +14,7 @@ RTSP / 動画
 ```
 
 - 入力は GStreamer で NV12 にデコードし、appsink の backpressure でフレームを落とさない
+- `calibration_enabled: true` のときは `calib_data/homography.txt` のホモグラフィを CUDA 上で適用し、射影後 NV12 を検出入力にする（BGR 変換なし）
 - 検出は NV12→RGB・正規化込みの TensorRT エンジン（`--fuse-nv12`）を使用
 - MQTT トピック `camera/<camera_name>` に検出点 `(x, y, score)` を JSON で配信
 - 任意で検出オーバーレイを `nveglglessink` 等に表示可能
@@ -67,6 +68,8 @@ export DISPLAY=:1
 | `size` | `[W, H]`（エンジン入力と一致させる） |
 | `transport` | RTSP は `tcp` 推奨 |
 | `capture_fps` | カメラ 30fps から意図的に間引く場合（例: `15`） |
+| `calibration_enabled` | ホモグラフィ射影変換の ON/OFF |
+| `calibration_homography_path` | 射影変換用 3x3 行列ファイル（例: `calib_data/homography.txt`） |
 | `prefetch` | 次フレームの NV12 ホストコピーと推論を重ねる |
 | `display` | 検出オーバーレイ表示の ON/OFF |
 | `detector.engine_path` | NV12 融合 TRT エンジン |

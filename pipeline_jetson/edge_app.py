@@ -113,6 +113,8 @@ class EdgeApp:
         report_every: int = 30,
         max_wall_seconds=None,
         max_frames=None,
+        calibration_enabled: bool = False,
+        calibration_homography_path: str | None = None,
     ):
         """
         Args:
@@ -131,6 +133,8 @@ class EdgeApp:
             display_color: color for detection overlay
             report_every: print FPS every N frames
             max_wall_seconds / max_frames: optional stop conditions
+            calibration_enabled: apply homography warp to captured NV12
+            calibration_homography_path: 3x3 homography text file
         """
         self.w, self.h = int(size[0]), int(size[1])
         raw = GstNv12Capture(
@@ -139,6 +143,8 @@ class EdgeApp:
             transport=transport,
             max_buffers=max_buffers,
             capture_fps=capture_fps,
+            calibration_enabled=calibration_enabled,
+            calibration_homography_path=calibration_homography_path,
         )
         self.prefetch = bool(prefetch)
         self.capture = (
