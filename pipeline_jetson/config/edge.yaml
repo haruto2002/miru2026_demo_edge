@@ -22,7 +22,7 @@ prefetch: true              # overlap next-frame NV12 host copy with det
 prefetch_queue_size: 2
 
 # Debug RT view of detections (off by default; costs NV12→BGR + draw + sink)
-display: true
+display: false
 # Needs X11: export DISPLAY=:1  (this machine's GUI session)
 # Alternatives: nv3dsink / ximagesink
 display_sink: nveglglessink
@@ -40,5 +40,5 @@ publisher:
   _target_: pipeline_jetson.components.edge.publisher.Publisher
   broker_host: 192.168.0.100   # aggregation / mosquitto host
   broker_port: 1883
-  camera_name: worldporter_partial_01
-  pc_name: jetson_01
+  camera_name: worldporter_partial_02
+  pc_name: jetson_02
