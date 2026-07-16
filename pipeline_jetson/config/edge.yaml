@@ -22,11 +22,11 @@ prefetch: true              # overlap next-frame NV12 host copy with det
 prefetch_queue_size: 2
 
 # Debug RT view of detections (off by default; costs NV12→BGR + draw + sink)
-display: false
+display: true
 # Needs X11: export DISPLAY=:1  (this machine's GUI session)
 # Alternatives: nv3dsink / ximagesink
 display_sink: nveglglessink
-display_point_size: 5
+display_point_size: 10
 display_threshold: 0.5
 display_color: [0, 0, 255]
 detector:
