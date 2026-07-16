@@ -53,7 +53,7 @@ class GstNv12Capture:
     ):
         """
         Args:
-            source: file path or rtsp:// URL
+            source: file path, rtsp:// URL, or /dev/video* (USB)
             size: (W, H) NV12 output size (must match TRT engine)
             transport: RTSP transport ("tcp"/"udp"); required for rtsp
             max_buffers: appsink queue depth. When full, decoder blocks
@@ -65,6 +65,7 @@ class GstNv12Capture:
         _ensure_gst()
         self.source = source
         self.is_rtsp = source.lower().startswith(("rtsp://", "rtsps://"))
+        self.is_usb = source.startswith("/dev/video")
         self.w, self.h = int(size[0]), int(size[1])
         self.transport = transport
         self.max_buffers = max(1, int(max_buffers))
@@ -94,6 +95,10 @@ class GstNv12Capture:
                 f"rtspsrc location={self.source} protocols={self.transport} "
                 f"latency=200 ! parsebin"
             )
+        elif self.is_usb:
+            if not Path(self.source).exists():
+                raise FileNotFoundError(f"USB video device not found: {self.source}")
+            src = f"v4l2src device={self.source}"
         else:
             if not Path(self.source).exists():
                 raise FileNotFoundError(f"Video file not found: {self.source}")
@@ -107,6 +112,14 @@ class GstNv12Capture:
         # drop=false + finite max-buffers => backpressure under load
         # sync=false => pull paced by the consumer, not the pipeline clock
         self._fps_note = fps_note
+        if self.is_usb:
+            # UVC / V4L2 cameras typically output in system memory; keep it simple
+            # and convert to packed NV12 in CPU space for appsink.
+            return (
+                f"{src} ! videoconvert ! {caps} ! "
+                f"appsink name=sink emit-signals=false "
+                f"max-buffers={self.max_buffers} drop=false sync=false"
+            )
         return (
             f"{src} ! nvv4l2decoder ! nvvidconv ! {caps} ! "
             f"appsink name=sink emit-signals=false "
@@ -226,6 +239,10 @@ class PrefetchNv12Capture:
     @property
     def is_rtsp(self) -> bool:
         return self._cap.is_rtsp
+
+    @property
+    def is_usb(self) -> bool:
+        return self._cap.is_usb
 
     @property
     def w(self) -> int:

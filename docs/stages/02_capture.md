@@ -2,13 +2,13 @@
 
 ## 目的
 
-RTSP または動画ファイルをデコードし、検出器がそのまま使える packed NV12（ホスト上の `uint8` 配列）を順序どおり供給する。負荷時にフレームを捨てず、必要なら PTS ベースで意図的に間引く。
+RTSP / 動画ファイル / USB（V4L2）をデコードし、検出器がそのまま使える packed NV12（ホスト上の `uint8` 配列）を順序どおり供給する。負荷時にフレームを捨てず、必要なら PTS ベースで意図的に間引く。
 
 ## 入出力
 
 | | 内容 |
 |--|------|
-| 入力 | `source`（`rtsp://...` またはファイルパス）、解像度 `size` = `(W, H)` |
+| 入力 | `source`（`rtsp://...` / ファイルパス / `/dev/video*`）、解像度 `size` = `(W, H)` |
 | 出力 | `(nv12, seq, pts)` — `nv12` は長さ `W*H*3//2` の `uint8`、`seq` は 1 始まりの通番、`pts` は秒（float） |
 | 終端 | EOS / 致命エラーで `None`。待ち時間超過は `PullTimeout` |
 
@@ -38,6 +38,15 @@ filesrc location=... ! qtdemux ! parsebin
   ! nvv4l2decoder ! nvvidconv
   ! video/x-raw,format=NV12,width=W,height=H
   ! appsink ...（同上）
+```
+
+**USB（V4L2）**
+
+```
+v4l2src device=/dev/video0
+  ! videoconvert
+  ! video/x-raw,format=NV12,width=W,height=H
+  ! appsink name=sink emit-signals=false max-buffers=N drop=false sync=false
 ```
 
 要点:
@@ -70,7 +79,7 @@ filesrc location=... ! qtdemux ! parsebin
 
 ```text
 PullTimeout:
-  RTSP → 「waiting for RTSP frame...」を出して継続
+  RTSP / USB → 「waiting for live frame...」を出して継続
   ファイル → 停止
 None (EOS):
   ループ終了
@@ -80,7 +89,7 @@ None (EOS):
 
 | キー | 説明 |
 |------|------|
-| `source` | RTSP URL または動画パス |
+| `source` | RTSP URL / 動画パス / `/dev/video*`（USB） |
 | `size` | `[W, H]`。エンジン入力と一致必須 |
 | `transport` | RTSP 必須。本番は `tcp` 推奨 |
 | `max_buffers` | appsink 深さ（例: `4`） |
@@ -93,7 +102,7 @@ None (EOS):
 | 状況 | 挙動 |
 |------|------|
 | RTSP で `transport` なし | `ValueError`（構築時） |
-| ファイル不存在 | `FileNotFoundError` |
+| ファイル不存在 / USB デバイス不存在 | `FileNotFoundError` |
 | バッファ map 失敗 / 短すぎるバッファ | `PullTimeout` |
 | サンプルなし（タイムアウト内） | bus を確認し、EOS/ERROR なら `None`、それ以外は `PullTimeout` |
 | GST ERROR | ログ出力後 `_eos=True`、以降 `None` |

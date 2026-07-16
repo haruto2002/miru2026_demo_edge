@@ -63,7 +63,7 @@ export DISPLAY=:1
 
 | キー | 説明 |
 |------|------|
-| `source` | RTSP URL または動画パス |
+| `source` | RTSP URL / 動画パス / `/dev/video*`（USB） |
 | `size` | `[W, H]`（エンジン入力と一致させる） |
 | `transport` | RTSP は `tcp` 推奨 |
 | `capture_fps` | カメラ 30fps から意図的に間引く場合（例: `15`） |
@@ -173,9 +173,10 @@ uv run python trt_scripts/bench_p2pnet_ckpt.py \
 
 ## カメラ接続確認（GStreamer）
 
+### RTSP
 RTSP 形式: `rtsp://<user>:<pass>@<ip>:554/...`
 
-Jetson で映像まで確認:
+Jetsonで映像まで確認:
 
 ```bash
 gst-launch-1.0 -v \
@@ -192,6 +193,25 @@ gst-launch-1.0 -v \
   rtspsrc location='rtsp://USER:PASS@192.168.0.11:554/ONVIF/MediaInput?profile=def_profile1' \
   protocols=tcp latency=0 ! \
   rtph265depay ! h265parse ! nvv4l2decoder ! \
+  fakesink sync=false
+```
+
+### USB
+
+Jetson で映像まで確認:
+
+```bash
+gst-launch-1.0 -v \
+  v4l2src device=/dev/video0 ! \
+  videoconvert ! \
+  autovideosink sync=false
+```
+
+接続のみ確認（表示なし）:
+
+```bash
+gst-launch-1.0 -v \
+  v4l2src device=/dev/video0 ! \
   fakesink sync=false
 ```
 

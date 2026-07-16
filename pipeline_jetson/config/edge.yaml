@@ -4,8 +4,9 @@
 _target_: pipeline_jetson.edge_app.EdgeApp
 _recursive_: false
 
-source: rtsp://soirt:Aist-Rwdc@192.168.0.11:554/ONVIF/MediaInput?profile=def_profile1
+# source: rtsp://soirt:Aist-Rwdc@192.168.0.11:554/ONVIF/MediaInput?profile=def_profile1
 # source: results/worldporter_fhd.mp4
+source: /dev/video0          # USB (V4L2) camera device
 size: [1920, 1080]          # (W, H) — must match NV12-fused engine
 transport: tcp              # RTSP: tcp is more reliable on this camera (udp SETUP was 503)
 max_buffers: 4              # appsink depth; full => block decoder, no skip under load

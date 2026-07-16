@@ -195,9 +195,11 @@ class EdgeApp:
                 try:
                     item = self.capture.pull()
                 except PullTimeout:
-                    # Live RTSP: keep waiting; file sources rarely hit this.
-                    if getattr(self.capture, "is_rtsp", False):
-                        print("[edge] waiting for RTSP frame...")
+                    # Live sources (RTSP/USB): keep waiting; file sources rarely hit this.
+                    if getattr(self.capture, "is_rtsp", False) or getattr(
+                        self.capture, "is_usb", False
+                    ):
+                        print("[edge] waiting for live frame...")
                         continue
                     print("[edge] pull timeout (file); stopping")
                     break

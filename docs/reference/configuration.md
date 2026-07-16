@@ -12,7 +12,7 @@ RTSP の認証情報は実ファイルに書かれることがあるが、文書
 |------|---------|------|
 | `_target_` | `pipeline_jetson.edge_app.EdgeApp` | アプリクラス |
 | `_recursive_` | `false` | ネストの自動 instantiate を無効化 |
-| `source` | `rtsp://USER:PASS@HOST:554/...` または動画パス | 入力ソース |
+| `source` | `rtsp://USER:PASS@HOST:554/...` / 動画パス / `/dev/video0` | 入力ソース（RTSP / ファイル / USB(V4L2)） |
 | `size` | `[1920, 1080]` | **(W, H)**。NV12 出力・表示サイズ。エンジンと一致必須 |
 | `transport` | `tcp` | RTSP のプロトコル。RTSP 時は必須 |
 | `max_buffers` | `4` | appsink 深さ。満杯時は backpressure |
