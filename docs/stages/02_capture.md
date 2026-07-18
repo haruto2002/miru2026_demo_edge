@@ -111,6 +111,8 @@ None (EOS):
 
 ## 設定キー
 
+`source` / `transport` / `calibration_*` は機種 YAML（`jetsonN.yaml`）、それ以外は主に [`base.yaml`](../../pipeline_jetson/config/base.yaml)。詳細は [configuration.md](../reference/configuration.md)。
+
 | キー | 説明 |
 |------|------|
 | `source` | RTSP URL / 動画パス / `/dev/video*`（USB） |
@@ -121,7 +123,7 @@ None (EOS):
 | `calibration_enabled` | ホモグラフィ射影変換の ON/OFF |
 | `calibration_homography_path` | 3x3 ホモグラフィ行列ファイル |
 | `prefetch` | prefetch ラップの ON/OFF |
-| `prefetch_queue_size` | prefetch キュー深さ（例: `2`） |
+| `prefetch_queue_size` | prefetch キュー深さ（例: `10`） |
 
 ## 失敗・タイムアウト時の挙動
 

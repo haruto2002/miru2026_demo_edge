@@ -32,7 +32,7 @@ MQTT 化後は [mqtt_contract.md](mqtt_contract.md) の `detections.point` に�
 
 | 場所 | 表記 | FHD の例 |
 |------|------|----------|
-| `edge.yaml` の `size` | `[W, H]` | `[1920, 1080]` |
+| `base.yaml` の `size` | `[W, H]` | `[1920, 1080]` |
 | `GstNv12Capture` / `EdgeApp` | `w, h` | 1920, 1080 |
 | `detector.img_size` | `[H, W]` | `[1080, 1920]` |
 | TRT export `--img-size` | `H W` | `1080 1920` |

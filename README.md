@@ -47,11 +47,11 @@ uv sync
 集約 PC 側で MQTT ブローカが起動していることを確認してから実行します。
 
 ```bash
-# 推奨
-./run.sh
+# 推奨（引数は機種名: jetson1 … jetson4）
+./run.sh jetson1
 
 # または
-uv run python run.py --cfg pipeline_jetson/config/edge.yaml
+uv run python run.py --cfg pipeline_jetson/config/jetson1.yaml
 ```
 
 GUI 表示を使う場合は X11 の DISPLAY を設定します。
@@ -60,20 +60,19 @@ GUI 表示を使う場合は X11 の DISPLAY を設定します。
 export DISPLAY=:1
 ```
 
-### 主な設定（`pipeline_jetson/config/edge.yaml`）
+### 主な設定（`base.yaml` + `jetsonN.yaml`）
 
-| キー | 説明 |
-|------|------|
-| `source` | RTSP URL / 動画パス / `/dev/video*`（USB） |
-| `size` | `[W, H]`（エンジン入力と一致させる） |
-| `transport` | RTSP は `tcp` 推奨 |
-| `capture_fps` | カメラ 30fps から意図的に間引く場合（例: `15`） |
-| `calibration_enabled` | ホモグラフィ射影変換の ON/OFF |
-| `calibration_homography_path` | 射影変換用 3x3 行列ファイル（例: `calib_data/homography.txt`） |
-| `prefetch` | 次フレームの NV12 ホストコピーと推論を重ねる |
-| `display` | 検出オーバーレイ表示の ON/OFF |
-| `detector.engine_path` | NV12 融合 TRT エンジン |
-| `publisher.broker_host` | 集約側 mosquitto のホスト |
+艦隊共通は `pipeline_jetson/config/base.yaml`、入力・キャリブ・MQTT 識別子などは `jetsonN.yaml`（`extends: base.yaml`）。キーの置き場の詳細は [docs/reference/configuration.md](docs/reference/configuration.md)。
+
+| キー | 置き場 | 説明 |
+|------|--------|------|
+| `source` / `transport` | 機種 | RTSP URL / 動画 / `/dev/video*`。RTSP は `tcp` 推奨 |
+| `calibration_*` | 機種 | ホモグラフィ射影変換 |
+| `publisher.camera_name` / `pc_name` | 機種 | MQTT トピック・client_id |
+| `display` | 機種（上書き） | 検出オーバーレイ。base 既定は `false` |
+| `size` / `detector.*` | base | 解像度・NV12 融合 TRT エンジン |
+| `capture_fps` / `prefetch` | base | 間引き・ホストコピーと推論の重ね |
+| `publisher.broker_host` | base | 集約側 mosquitto のホスト |
 
 ## MQTT ペイロード
 
@@ -104,7 +103,9 @@ realtime/
 ├── pyproject.toml               依存定義（uv）
 ├── pipeline_jetson/             Jetson エッジアプリ
 │   ├── edge_app.py              キャプチャ → 検出 → 配信のループ
-│   ├── config/edge.yaml         パイプライン設定
+│   ├── config/
+│   │   ├── base.yaml            艦隊共通設定
+│   │   └── jetsonN.yaml         機種固有（extends: base.yaml）
 │   └── components/edge/
 │       ├── gst_io.py            GStreamer NV12 キャプチャ / 表示
 │       ├── publisher.py         MQTT 配信
@@ -143,7 +144,7 @@ uv run python trt_scripts/build_p2pnet_engine.py \
   --workspace-gb 16
 ```
 
-`edge.yaml` の `detector.engine_path` / `img_size` / `size` は、この解像度と一致させてください。
+`base.yaml` の `detector.engine_path` / `img_size` / `size` は、この解像度と一致させてください。
 
 ### （参考）BGR 融合エンジン
 

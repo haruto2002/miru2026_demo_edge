@@ -8,7 +8,7 @@ YAML 設定から `EdgeApp` とその依存コンポーネント（検出器・P
 
 | | 内容 |
 |--|------|
-| 入力 | `--cfg` で指定する YAML（本番は `pipeline_jetson/config/edge.yaml`） |
+| 入力 | `--cfg` で指定する機種 YAML（例: `pipeline_jetson/config/jetson1.yaml`） |
 | 出力 | インスタンス化された `EdgeApp` が `run()` でパイプラインを駆動 |
 
 ## 実装
@@ -17,22 +17,22 @@ YAML 設定から `EdgeApp` とその依存コンポーネント（検出器・P
 |------|------|
 | CLI エントリ | [`run.py`](../../run.py) |
 | 起動シェル | [`run.sh`](../../run.sh) |
-| 設定 | [`pipeline_jetson/config/edge.yaml`](../../pipeline_jetson/config/edge.yaml) |
+| 設定 | [`pipeline_jetson/config/base.yaml`](../../pipeline_jetson/config/base.yaml) + [`jetsonN.yaml`](../../pipeline_jetson/config/) |
 | アプリ本体 | [`pipeline_jetson/edge_app.py`](../../pipeline_jetson/edge_app.py) の `EdgeApp` |
 
 ### 起動チェーン
 
 ```
-./run.sh
-  └─ uv run python run.py --cfg pipeline_jetson/config/edge.yaml
-       ├─ OmegaConf.load(cfg_path)
+./run.sh jetson1
+  └─ uv run python run.py --cfg pipeline_jetson/config/jetson1.yaml
+       ├─ load_cfg: OmegaConf.merge(base.yaml, jetson1.yaml)
        ├─ hydra.utils.instantiate(cfg)   # _target_: EdgeApp
        │     ├─ detector  → P2PNetTRTNV12Detector(...)
        │     └─ publisher → Publisher(...)
        └─ app.run()
 ```
 
-`run.py` は Hydra のフルアプリではなく、OmegaConf で YAML を読み `instantiate` する薄いローダです。`_recursive_: false` のため、ネストした `detector` / `publisher` は `EdgeApp.__init__` 内の `_maybe_instantiate` で改めてインスタンス化されます。
+`run.py` は Hydra のフルアプリではなく、OmegaConf で YAML を読み `instantiate` する薄いローダです。機種 YAML の `extends: base.yaml` を同じディレクトリ基準でマージします。`_recursive_: false` のため、ネストした `detector` / `publisher` は `EdgeApp.__init__` 内の `_maybe_instantiate` で改めてインスタンス化されます。
 
 ### `EdgeApp.__init__` での配線
 
@@ -79,6 +79,6 @@ YAML 設定から `EdgeApp` とその依存コンポーネント（検出器・P
 
 ## 関連コード
 
-- [`run.py`](../../run.py) — `main`, `get_args`
+- [`run.py`](../../run.py) — `load_cfg`, `main`, `get_args`
 - [`pipeline_jetson/edge_app.py`](../../pipeline_jetson/edge_app.py) — `_maybe_instantiate`, `EdgeApp.__init__`, `EdgeApp.run`
-- [`pipeline_jetson/config/edge.yaml`](../../pipeline_jetson/config/edge.yaml)
+- [`pipeline_jetson/config/base.yaml`](../../pipeline_jetson/config/base.yaml) / [`jetsonN.yaml`](../../pipeline_jetson/config/)

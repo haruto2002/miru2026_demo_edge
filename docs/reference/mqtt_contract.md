@@ -8,7 +8,7 @@
 camera/<camera_name>
 ```
 
-`camera_name` は YAML の `publisher.camera_name`（例: `worldporter_partial_01`）。
+`camera_name` は機種 YAML（`jetsonN.yaml`）の `publisher.camera_name`（例: `worldporter_partial_01`）。
 
 ## QoS / retain
 
@@ -36,8 +36,8 @@ camera/<camera_name>
 
 | フィールド | 型 | 意味 |
 |------------|-----|------|
-| `camera_name` | string | カメラ識別子（トピック末尾と同一） |
-| `pc_name` | string | エッジ端末名 |
+| `camera_name` | string | カメラ識別子（トピック末尾と同一）。機種 YAML の `publisher.camera_name` |
+| `pc_name` | string | エッジ端末名。機種 YAML の `publisher.pc_name` |
 | `timestamp` | number (float) | Unix epoch 秒。詳細は下記 |
 | `frame_id` | number (int) | エッジが採用したフレームの通番（`seq`）。1 始まり |
 | `detections.point` | array | 検出点のリスト。0 件もあり得る |

@@ -63,6 +63,8 @@
 
 ## 設定キー
 
+`broker_*` / `_target_` は [`base.yaml`](../../pipeline_jetson/config/base.yaml)、`camera_name` / `pc_name` は機種 YAML（`jetsonN.yaml`）。
+
 | キー | 説明 |
 |------|------|
 | `publisher._target_` | `pipeline_jetson.components.edge.publisher.Publisher` |

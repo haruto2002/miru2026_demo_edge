@@ -5,8 +5,20 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
 
-def main(cfg_path: Path):
+def load_cfg(cfg_path: Path):
     cfg = OmegaConf.load(cfg_path)
+    extends = OmegaConf.select(cfg, "extends")
+    if extends:
+        base = OmegaConf.load(cfg_path.parent / str(extends))
+        cfg = OmegaConf.merge(base, cfg)
+        OmegaConf.set_struct(cfg, False)
+        if "extends" in cfg:
+            del cfg["extends"]
+    return cfg
+
+
+def main(cfg_path: Path):
+    cfg = load_cfg(cfg_path)
     app = instantiate(cfg)
     app.run()
 

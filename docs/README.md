@@ -19,7 +19,7 @@
 | [stages/04_detection.md](stages/04_detection.md) | NV12 融合 TensorRT 検出 |
 | [stages/05_mqtt_publish.md](stages/05_mqtt_publish.md) | 検出結果の MQTT 配信 |
 | [stages/06_display.md](stages/06_display.md) | デバッグ用オーバーレイ表示 |
-| [reference/configuration.md](reference/configuration.md) | `edge.yaml` 全キー解説 |
+| [reference/configuration.md](reference/configuration.md) | `base.yaml` + `jetsonN.yaml` 全キー解説 |
 | [reference/mqtt_contract.md](reference/mqtt_contract.md) | 集約側向け MQTT 契約 |
 | [reference/data_contracts.md](reference/data_contracts.md) | フレーム・検出・解像度の約束 |
 | [build/tensorrt_engine.md](build/tensorrt_engine.md) | ONNX エクスポート〜エンジンビルド |

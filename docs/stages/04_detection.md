@@ -60,6 +60,8 @@ scale = (W / resize_W, H / resize_H)
 
 ## 設定キー
 
+検出器設定は [`base.yaml`](../../pipeline_jetson/config/base.yaml)（必要なら機種 YAML で上書き）。
+
 | キー | 説明 |
 |------|------|
 | `detector._target_` | `processor.detector.p2pnet_trt_nv12.P2PNetTRTNV12Detector` |

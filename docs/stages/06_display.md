@@ -39,12 +39,14 @@ appsrc は `block=True`（表示が遅いと backpressure）。
 
 ## 設定キー
 
+描画スタイルは [`base.yaml`](../../pipeline_jetson/config/base.yaml)。`display` の ON/OFF は機種 YAML で上書き（例: jetson1 のみ `true`）。
+
 | キー | 説明 |
 |------|------|
 | `display` | `true` でオーバーレイ表示 |
 | `display_sink` | 例: `nveglglessink` / `nv3dsink` / `ximagesink` |
 | `display_threshold` | 描画用スコア閾値（例: `0.5`） |
-| `display_point_size` | 円半径 |
+| `display_point_size` | 円半径（例: `10`） |
 | `display_color` | BGR 色（例: `[0, 0, 255]`） |
 
 GUI 利用時は X11 の `DISPLAY` が必要（例: `export DISPLAY=:1`）。

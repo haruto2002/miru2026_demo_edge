@@ -8,14 +8,14 @@
 flowchart LR
   ckpt[cutout.pth] --> onnx[export_fuse_nv12]
   onnx --> engine[build_fp16]
-  engine --> yaml[edge.yaml_engine_path]
+  engine --> yaml[base.yaml_engine_path]
 ```
 
 | 段階 | スクリプト | 成果物 |
 |------|------------|--------|
 | 1. ONNX エクスポート | [`trt_scripts/export_p2pnet_onnx.py`](../../trt_scripts/export_p2pnet_onnx.py) | `*_nv12.onnx` |
 | 2. エンジンビルド | [`trt_scripts/build_p2pnet_engine.py`](../../trt_scripts/build_p2pnet_engine.py) | `*_nv12.engine` |
-| 3. 設定反映 | [`pipeline_jetson/config/edge.yaml`](../../pipeline_jetson/config/edge.yaml) | `detector.engine_path` / `img_size` / `size` |
+| 3. 設定反映 | [`pipeline_jetson/config/base.yaml`](../../pipeline_jetson/config/base.yaml) | `detector.engine_path` / `img_size` / `size` |
 
 TensorRT は JetPack 付属を使う（pip の `tensorrt` は入れない）。venv は `uv venv --system-site-packages` が前提。
 
@@ -37,7 +37,7 @@ uv run python trt_scripts/build_p2pnet_engine.py \
   --workspace-gb 16
 ```
 
-`edge.yaml` 側の一致例:
+`base.yaml` 側の一致例:
 
 ```yaml
 size: [1920, 1080]              # W, H

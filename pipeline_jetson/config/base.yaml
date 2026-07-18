@@ -1,34 +1,29 @@
-# Jetson edge: GStreamer NV12 capture -> TRT detect -> localhost MQTT (dets only)
+# Fleet-common Jetson edge settings.
+# Per-machine overrides: jetsonN.yaml (extends: base.yaml)
 # Tracking / map draw happen on the aggregation side.
 # Frames are NEVER dropped (appsink drop=false + backpressure).
 _target_: pipeline_jetson.edge_app.EdgeApp
 _recursive_: false
 
-# source: rtsp://soirt:Aist-Rwdc@192.168.0.11:554/ONVIF/MediaInput?profile=def_profile1
-# source: results/worldporter_fhd.mp4
-source: /dev/video0          # USB (V4L2) camera device
 size: [1920, 1080]          # (W, H) — must match NV12-fused engine
-transport: tcp              # RTSP: tcp is more reliable on this camera (udp SETUP was 503)
 max_buffers: 4              # appsink depth; full => block decoder, no skip under load
 capture_fps: 15             # keep ~15fps by PTS skip (30fps cam); null = every frame
-
-calibration_enabled: true
-calibration_homography_path: calib_data/homography.txt
 
 report_every: 30
 max_wall_seconds: null
 max_frames: null
 prefetch: true              # overlap next-frame NV12 host copy with det
-prefetch_queue_size: 2
+prefetch_queue_size: 10
 
 # Debug RT view of detections (off by default; costs NV12→BGR + draw + sink)
-display: true
+display: false
 # Needs X11: export DISPLAY=:1  (this machine's GUI session)
 # Alternatives: nv3dsink / ximagesink
 display_sink: nveglglessink
 display_point_size: 10
 display_threshold: 0.5
 display_color: [0, 0, 255]
+
 detector:
   _target_: processor.detector.p2pnet_trt_nv12.P2PNetTRTNV12Detector
   engine_path: weights/p2pnet/cutout_fhd_nv12.engine
@@ -40,5 +35,3 @@ publisher:
   _target_: pipeline_jetson.components.edge.publisher.Publisher
   broker_host: 192.168.0.100   # aggregation / mosquitto host
   broker_port: 1883
-  camera_name: worldporter_partial_01
-  pc_name: jetson_01

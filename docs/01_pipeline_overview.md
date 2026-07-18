@@ -44,7 +44,7 @@ flowchart LR
 
 ## 1 フレームの処理順
 
-エントリは `./run.sh` または `uv run python run.py --cfg pipeline_jetson/config/edge.yaml` です。YAML の `_target_` で `EdgeApp` が組み立てられ、`run()` がメインループになります。
+エントリは `./run.sh jetson1` または `uv run python run.py --cfg pipeline_jetson/config/jetson1.yaml` です。`base.yaml` と機種 YAML をマージした `_target_` で `EdgeApp` が組み立てられ、`run()` がメインループになります。
 
 実装: [`pipeline_jetson/edge_app.py`](../pipeline_jetson/edge_app.py) の `EdgeApp.run()`
 
@@ -72,7 +72,7 @@ flowchart LR
 | 役割 | パス | クラス / 関数 |
 |------|------|----------------|
 | エントリ | [`run.py`](../run.py) | `main` → `hydra.utils.instantiate` |
-| 設定 | [`pipeline_jetson/config/edge.yaml`](../pipeline_jetson/config/edge.yaml) | `_target_: EdgeApp` |
+| 設定 | [`pipeline_jetson/config/base.yaml`](../pipeline_jetson/config/base.yaml) + `jetsonN.yaml` | `_target_: EdgeApp` |
 | メインループ | [`pipeline_jetson/edge_app.py`](../pipeline_jetson/edge_app.py) | `EdgeApp` |
 | キャプチャ / 表示 | [`pipeline_jetson/components/edge/gst_io.py`](../pipeline_jetson/components/edge/gst_io.py) | `GstNv12Capture`, `PrefetchNv12Capture`, `GstBgrDisplay` |
 | 検出 | [`processor/detector/p2pnet_trt_nv12.py`](../processor/detector/p2pnet_trt_nv12.py) | `P2PNetTRTNV12Detector` |
