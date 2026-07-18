@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from typing import Optional
 
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
@@ -17,8 +18,19 @@ def load_cfg(cfg_path: Path):
     return cfg
 
 
-def main(cfg_path: Path):
+def _parse_bool(value: str) -> bool:
+    v = value.strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    raise argparse.ArgumentTypeError(f"invalid --display: {value!r}")
+
+
+def main(cfg_path: Path, display: Optional[bool] = None):
     cfg = load_cfg(cfg_path)
+    if display is not None:
+        cfg.display = display
     app = instantiate(cfg)
     app.run()
 
@@ -26,10 +38,10 @@ def main(cfg_path: Path):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", type=str, required=True)
+    parser.add_argument("--display", type=_parse_bool, default=None)
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = get_args()
-    cfg_path = args.cfg
-    main(Path(cfg_path))
+    main(Path(args.cfg), display=args.display)
