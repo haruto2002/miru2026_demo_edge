@@ -9,5 +9,5 @@ calibration_enabled: true
 calibration_homography_path: calib_data/homography.txt
 
 publisher:
-  camera_name: worldporter_partial_0
+  camera_name: worldporter_partial_03
   pc_name: jetson_03
