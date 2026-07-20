@@ -25,7 +25,10 @@ from pipeline_jetson.components.edge.gst_io import (
     PrefetchNv12Capture,
     PullTimeout,
 )
+from pipeline_jetson.components.edge.log_util import get_logger
 from pipeline_jetson.components.edge.publisher import Publisher
+
+log = get_logger(__name__)
 
 
 def _maybe_instantiate(obj):
@@ -133,7 +136,7 @@ class AsyncDetectionDisplay:
             target=self._worker, name="det-display", daemon=True
         )
         self._thread.start()
-        print("[edge] async display started (queue=1, latest-only)")
+        log.info("[edge] async display started (queue=1, latest-only)")
 
     def stop(self) -> None:
         self._stop.set()
@@ -194,7 +197,7 @@ class AsyncDetectionDisplay:
             )
             if not self._display.push(bgr):
                 self.push_failed = True
-                print("[edge] display push failed; display worker exit")
+                log.info("[edge] display push failed; display worker exit")
                 break
 
 
@@ -290,11 +293,12 @@ class EdgeApp:
 
         if self.max_wall_seconds is not None and self.max_wall_seconds > 0:
             threading.Timer(self.max_wall_seconds, self.request_stop).start()
-            print(f"Will stop after {self.max_wall_seconds}s")
+            log.info("Will stop after %ss", self.max_wall_seconds)
 
-        print(
-            f"[edge] prefetch={'on' if self.prefetch else 'off'}  "
-            f"display={'on' if self.display_enabled else 'off'}"
+        log.info(
+            "[edge] prefetch=%s  display=%s",
+            "on" if self.prefetch else "off",
+            "on" if self.display_enabled else "off",
         )
 
         n = 0
@@ -313,13 +317,13 @@ class EdgeApp:
                     if getattr(self.capture, "is_rtsp", False) or getattr(
                         self.capture, "is_usb", False
                     ):
-                        print("[edge] waiting for live frame...")
+                        log.info("[edge] waiting for live frame...")
                         continue
-                    print("[edge] pull timeout (file); stopping")
+                    log.info("[edge] pull timeout (file); stopping")
                     break
                 t1 = time.perf_counter()
                 if item is None:
-                    print("[edge] EOS")
+                    log.info("[edge] EOS")
                     break
 
                 nv12, seq, pts = item
@@ -347,7 +351,7 @@ class EdgeApp:
                     e2e = (t4 - t0) * 1e3
                     avg = (time.perf_counter() - t0_all) / n
                     msg = (
-                        f"[edge] seq={seq}  "
+                        f"[edge] seq={seq}  ts={timestamp:.3f}  "
                         f"wait={(t1 - t0) * 1e3:.1f}  "
                         f"det={(t2 - t1) * 1e3:.1f}  "
                         f"pub={(t3 - t2) * 1e3:.1f}  "
@@ -359,10 +363,10 @@ class EdgeApp:
                         f"avg={avg * 1e3:.1f}ms ({1 / avg:.1f}fps)  "
                         f"dets={0 if dets is None else len(dets)}"
                     )
-                    print(msg)
+                    log.info(msg)
 
                 if self.max_frames is not None and n >= self.max_frames:
-                    print(f"[edge] reached max_frames={self.max_frames}")
+                    log.info("[edge] reached max_frames=%s", self.max_frames)
                     break
         finally:
             if n:
@@ -378,7 +382,7 @@ class EdgeApp:
                     f" ms  prefetch={'on' if self.prefetch else 'off'}  "
                     f"display={'on' if self.display_enabled else 'off'}"
                 )
-                print(summary)
+                log.info(summary)
             if self.async_display is not None:
                 self.async_display.stop()
             self.capture.stop()

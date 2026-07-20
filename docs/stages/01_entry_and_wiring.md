@@ -33,6 +33,7 @@ YAML 設定から `EdgeApp` とその依存コンポーネント（検出器・P
 ```
 
 `run.py` は Hydra のフルアプリではなく、OmegaConf で YAML を読み `instantiate` する薄いローダです。機種 YAML の `extends: base.yaml` を同じディレクトリ基準でマージします。`_recursive_: false` のため、ネストした `detector` / `publisher` は `EdgeApp.__init__` 内の `_maybe_instantiate` で改めてインスタンス化されます。
+実行ログは `run.py` 起動時に timestamped logger を 1 回だけ設定し、各行の先頭にローカル時刻 `YYYY-MM-DD HH:MM:SS.mmm` を付けます。
 
 ### `EdgeApp.__init__` での配線
 

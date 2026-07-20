@@ -25,10 +25,13 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GstApp", "1.0")
 from gi.repository import Gst, GstApp  # noqa: E402
 
+from pipeline_jetson.components.edge.log_util import get_logger
 from pipeline_jetson.components.edge.nv12_homography import (
     Nv12HomographyWarper,
     load_homography,
 )
+
+log = get_logger(__name__)
 
 
 def _ensure_gst():
@@ -171,10 +174,13 @@ class GstNv12Capture:
         self._seq = 0
         self._eos = False
         self._last_kept_pts = None
-        print(
-            f"[GST-capture] started  {self.w}x{self.h} NV12  "
-            f"max-buffers={self.max_buffers} drop=false  {self._fps_note}  "
-            f"{self._calib_note}"
+        log.info(
+            "[GST-capture] started  %sx%s NV12  max-buffers=%s drop=false  %s  %s",
+            self.w,
+            self.h,
+            self.max_buffers,
+            self._fps_note,
+            self._calib_note,
         )
 
     def stop(self) -> None:
@@ -196,7 +202,7 @@ class GstNv12Capture:
             self._eos = True
             return "eos"
         err, debug = msg.parse_error()
-        print(f"[GST-capture] ERROR: {err.message} ({debug})")
+        log.error("[GST-capture] ERROR: %s (%s)", err.message, debug)
         self._eos = True
         return "error"
 
@@ -313,7 +319,7 @@ class PrefetchNv12Capture:
             target=self._worker, name="nv12-prefetch", daemon=True
         )
         self._thread.start()
-        print(f"[GST-prefetch] queue_size={self._q.maxsize}")
+        log.info("[GST-prefetch] queue_size=%s", self._q.maxsize)
 
     def stop(self) -> None:
         self._stop.set()
@@ -346,9 +352,9 @@ class PrefetchNv12Capture:
             except PullTimeout:
                 idle_logs += 1
                 if idle_logs == 1 or idle_logs % 5 == 0:
-                    print(
-                        f"[GST-prefetch] waiting for first/next frame "
-                        f"({idle_logs * 2}s)..."
+                    log.info(
+                        "[GST-prefetch] waiting for first/next frame (%ss)...",
+                        idle_logs * 2,
                     )
                 continue
             if self._stop.is_set():
@@ -362,7 +368,7 @@ class PrefetchNv12Capture:
                 except queue.Full:
                     continue
             if item is None:
-                print("[GST-prefetch] EOS/error; worker exit")
+                log.info("[GST-prefetch] EOS/error; worker exit")
                 break
 
     def pull(
@@ -440,7 +446,12 @@ class GstBgrDisplay:
         pipe.set_state(Gst.State.PLAYING)
         self._pipe = pipe
         self._appsrc = src
-        print(f"[GST-display] started  {self.w}x{self.h} BGR -> {self.sink_name}")
+        log.info(
+            "[GST-display] started  %sx%s BGR -> %s",
+            self.w,
+            self.h,
+            self.sink_name,
+        )
 
     def stop(self) -> None:
         pipe = self._pipe
