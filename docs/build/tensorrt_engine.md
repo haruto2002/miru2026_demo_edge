@@ -26,13 +26,14 @@ TensorRT は JetPack 付属を使う（pip の `tensorrt` は入れない）。v
 uv run python trt_scripts/export_p2pnet_onnx.py \
   --img-size 1080 1920 \
   --fuse-nv12 \
-  --out weights/p2pnet/cutout_fhd_nv12.onnx \
+  --yuv-matrix bt601-limited \
+  --out weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx \
   --device cpu
 
 # 2. TensorRT エンジン（FP16）
 uv run python trt_scripts/build_p2pnet_engine.py \
-  --onnx weights/p2pnet/cutout_fhd_nv12.onnx \
-  --engine weights/p2pnet/cutout_fhd_nv12.engine \
+  --onnx weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx \
+  --engine weights/p2pnet/cutout_fhd_nv12_bt601lim.engine \
   --fp16 \
   --workspace-gb 16
 ```
@@ -42,14 +43,14 @@ uv run python trt_scripts/build_p2pnet_engine.py \
 ```yaml
 size: [1920, 1080]              # W, H
 detector:
-  engine_path: weights/p2pnet/cutout_fhd_nv12.engine
+  engine_path: weights/p2pnet/cutout_fhd_nv12_bt601lim.engine
   img_size: [1080, 1920]        # H, W
 ```
 
 ## エクスポートの要点（`--fuse-nv12`）
 
 - 入力: packed uint8 NV12、形状 `(1, H*W*3//2)`
-- グラフ内: NV12→RGB（BT.709 full-range 系）、bilinear resize（128 倍数）、ImageNet normalize、P2PNet、softmax 済み scores
+- グラフ内: NV12→RGB（`--yuv-matrix`: `bt601-limited` または従来の `bt709-full`）、bilinear resize（128 倍数）、ImageNet normalize、P2PNet、softmax 済み scores
 - 出力: `scores` `(1, N)`、`points` `(1, N, 2)`（リサイズ空間）
 - アンカーは解像度固定で定数化、FPN の推論用スリム forward を使用
 
@@ -59,7 +60,7 @@ Python 推論側（`P2PNetTRTNV12Detector`）は H2D + `execute_async_v3` + 後�
 
 ```bash
 uv run python trt_scripts/bench_p2pnet_trt.py \
-  --engine weights/p2pnet/cutout_fhd_nv12.engine \
+  --engine weights/p2pnet/cutout_fhd_nv12_bt601lim.engine \
   --input_img_size 1080 1920
 
 uv run python trt_scripts/bench_p2pnet_ckpt.py \

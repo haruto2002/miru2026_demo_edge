@@ -88,7 +88,6 @@ class GstNv12Capture:
 
         self._pipe = None
         self._sink: Optional[GstApp.AppSink] = None
-        self._host = np.empty(self.nv12_nbytes, dtype=np.uint8)
         self._seq = 0
         self._eos = False
         self._last_kept_pts: Optional[float] = None
@@ -201,8 +200,8 @@ class GstNv12Capture:
         self._eos = True
         return "error"
 
-    def _pull_one(self, timeout_s: float) -> Optional[Tuple[np.ndarray, float]]:
-        """Pull one decoded sample. None=EOS/error; raises PullTimeout."""
+    def _try_pull_sample(self, timeout_s: float):
+        """Pull one appsink sample. None=EOS/error; raises PullTimeout."""
         if self._sink is None or self._eos:
             return None
         sample = self._sink.try_pull_sample(int(timeout_s * Gst.SECOND))
@@ -211,8 +210,17 @@ class GstNv12Capture:
             if status in ("eos", "error"):
                 return None
             raise PullTimeout(f"no frame within {timeout_s:.1f}s")
+        return sample
 
-        buf = sample.get_buffer()
+    @staticmethod
+    def _pts_seconds(buf) -> Optional[float]:
+        pts = buf.pts
+        if pts == Gst.CLOCK_TIME_NONE:
+            return None
+        return float(pts) / Gst.SECOND
+
+    def _copy_mapped_nv12(self, buf) -> np.ndarray:
+        """Map buffer once, copy NV12 bytes, optional calibration warp."""
         ok, mapinfo = buf.map(Gst.MapFlags.READ)
         if not ok:
             raise PullTimeout("buffer map failed")
@@ -221,23 +229,24 @@ class GstNv12Capture:
                 raise PullTimeout(
                     f"short buffer {mapinfo.size} < {self.nv12_nbytes}"
                 )
-            self._host[:] = np.frombuffer(
+            frame = np.frombuffer(
                 mapinfo.data, dtype=np.uint8, count=self.nv12_nbytes
-            )
+            ).copy()
         finally:
             buf.unmap(mapinfo)
 
-        pts = buf.pts
-        pts_s = float(pts) / Gst.SECOND if pts != Gst.CLOCK_TIME_NONE else 0.0
         if self._warper is not None:
-            self._warper.warp(self._host, out=self._warp_out)
-            return self._warp_out.copy(), pts_s
-        return self._host.copy(), pts_s
+            self._warper.warp(frame, out=self._warp_out)
+            return self._warp_out.copy()
+        return frame
 
-    def pull(self, timeout_s: float = 5.0) -> Optional[Tuple[np.ndarray, int, float]]:
+    def pull(
+        self, timeout_s: float = 5.0
+    ) -> Optional[Tuple[np.ndarray, int, Optional[float]]]:
         """Pull next kept NV12 frame (after optional capture_fps skip).
 
-        Returns (nv12_copy, seq, pts_seconds).
+        Returns (nv12_copy, seq, pts_seconds_or_None).
+        PTS is None when the buffer has Gst.CLOCK_TIME_NONE (kept, not fps-skipped).
         Returns None on EOS / fatal error.
         Raises PullTimeout if no kept frame arrived within timeout_s.
         """
@@ -246,15 +255,21 @@ class GstNv12Capture:
             remain = deadline - time.monotonic()
             if remain <= 0:
                 raise PullTimeout(f"no kept frame within {timeout_s:.1f}s")
-            item = self._pull_one(timeout_s=remain)
-            if item is None:
+            sample = self._try_pull_sample(timeout_s=remain)
+            if sample is None:
                 return None
-            nv12, pts_s = item
-            if self._min_frame_dt is not None and self._last_kept_pts is not None:
-                # Keep if enough PTS advanced (≈ 1/capture_fps). Slight slack
-                # avoids dropping both of a jittery pair.
-                if (pts_s - self._last_kept_pts) < self._min_frame_dt * 0.85:
-                    continue
+            buf = sample.get_buffer()
+            pts_s = self._pts_seconds(buf)
+            # PTS-first skip: avoid map/copy on frames we will drop.
+            # Missing PTS is always kept (cannot safely throttle).
+            if (
+                pts_s is not None
+                and self._min_frame_dt is not None
+                and self._last_kept_pts is not None
+                and (pts_s - self._last_kept_pts) < self._min_frame_dt * 0.85
+            ):
+                continue
+            nv12 = self._copy_mapped_nv12(buf)
             self._last_kept_pts = pts_s
             self._seq += 1
             return nv12, self._seq, pts_s
@@ -350,7 +365,9 @@ class PrefetchNv12Capture:
                 print("[GST-prefetch] EOS/error; worker exit")
                 break
 
-    def pull(self, timeout_s: float = 5.0) -> Optional[Tuple[np.ndarray, int, float]]:
+    def pull(
+        self, timeout_s: float = 5.0
+    ) -> Optional[Tuple[np.ndarray, int, Optional[float]]]:
         """Get next prefetched frame (or None on EOS). Raises PullTimeout."""
         try:
             return self._q.get(timeout=timeout_s)

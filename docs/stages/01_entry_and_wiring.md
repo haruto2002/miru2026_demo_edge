@@ -39,20 +39,20 @@ YAML 設定から `EdgeApp` とその依存コンポーネント（検出器・P
 1. `GstNv12Capture(source, size, transport, max_buffers, capture_fps)` を生成
 2. `prefetch` が真なら `PrefetchNv12Capture` でラップ、偽なら生のキャプチャを使用
 3. `detector` / `publisher` を `instantiate`（または既にオブジェクトならそのまま）
-4. `GstBgrDisplay` を常に生成（`enabled=display`）。`display: false` でもオブジェクトはあるが、ループ内の変換・描画はスキップされる
+4. `display: true` のときだけ `AsyncDetectionDisplay` を生成（内部で `GstBgrDisplay`）。`false` なら `None` で変換・描画は走らない
 
 ### `run()` 開始・終了順
 
 **開始**
 
 1. `capture.start()`
-2. `display` が有効なら `display.start()`
+2. `async_display` があれば `async_display.start()`
 3. `publisher` があれば `publisher.start()`
 4. `max_wall_seconds` が設定されていればタイマーで `request_stop()`
 
 **終了（`finally`）**
 
-1. 有効なら `display.stop()`
+1. `async_display` があれば `async_display.stop()`
 2. `capture.stop()`
 3. `publisher` があれば `publisher.stop()`
 

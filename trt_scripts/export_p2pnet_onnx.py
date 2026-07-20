@@ -9,6 +9,7 @@ The exported graph is fixed-shape and inference-optimized:
     does a single H2D copy.
   - with --fuse-nv12, packed NV12 uint8 (GStreamer appsink layout) is the
     engine input; NV12->RGB + resize + normalize are in-graph.
+    --yuv-matrix selects BT.709 full-range (default) or BT.601 limited.
 
 Outputs:
     - scores: (1, N) person probability (softmax already applied)
@@ -20,7 +21,8 @@ Example:
         --weight weights/p2pnet/cutout.pth \
         --img-size 1080 1920 \
         --fuse-nv12 \
-        --out weights/p2pnet/cutout_fhd_nv12.onnx
+        --yuv-matrix bt601-limited \
+        --out weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx
 """
 
 from __future__ import annotations
@@ -43,11 +45,31 @@ from processor.modules.detector.p2pnet.network.p2pnet import P2PNet
 _IMAGENET_MEAN = (0.485, 0.456, 0.406)
 _IMAGENET_STD = (0.229, 0.224, 0.225)
 
-# BT.709 full-range YUV(0-255) -> RGB (matches P2PNetNV12Detector / yuvj420p).
-_A_V_R = 1.5748
-_A_U_G = 0.1873
-_A_V_G = 0.4681
-_A_U_B = 1.8556
+# NV12 (Y + UV) -> RGB matrices. U/V are centered (value - 128) before apply.
+#   y_ = y_scale * (Y - y_offset)
+#   R = y_ + a_vr * V'
+#   G = y_ - a_ug * U' - a_vg * V'
+#   B = y_ + a_ub * U'
+_YUV_MATRICES = {
+    # Full-range BT.709 (yuvj420p / JPEG-style 0-255 luma). Previous default.
+    "bt709-full": {
+        "y_offset": 0.0,
+        "y_scale": 1.0,
+        "a_vr": 1.5748,
+        "a_ug": 0.1873,
+        "a_vg": 0.4681,
+        "a_ub": 1.8556,
+    },
+    # Studio-swing BT.601 (Y 16-235, C 16-240). Common for HDMI/SDI/many USB cams.
+    "bt601-limited": {
+        "y_offset": 16.0,
+        "y_scale": 1.1643835616438356,  # 255/219
+        "a_vr": 1.5960267857142857,
+        "a_ug": 0.3917625,
+        "a_vg": 0.8129678571428571,
+        "a_ub": 2.017232142857143,
+    },
+}
 
 
 class P2PNetONNX(nn.Module):
@@ -106,7 +128,7 @@ class P2PNetONNXFusedNV12(P2PNetONNX):
     """Fused pre-processing for packed NV12 from GStreamer appsink.
 
     Input: (1, H*W*3//2) uint8 packed NV12 (Y plane then interleaved UV).
-    In-graph: NV12->RGB (BT.709 full-range) -> bilinear resize -> ImageNet normalize.
+    In-graph: NV12->RGB (selectable YUV matrix) -> bilinear resize -> ImageNet normalize.
     """
 
     def __init__(
@@ -115,11 +137,25 @@ class P2PNetONNXFusedNV12(P2PNetONNX):
         anchors: torch.Tensor,
         raw_size: tuple[int, int],
         resize_size: tuple[int, int],
+        yuv_matrix: str = "bt709-full",
     ):
         super().__init__(model, anchors)
+        if yuv_matrix not in _YUV_MATRICES:
+            raise ValueError(
+                f"unknown yuv_matrix={yuv_matrix!r}; "
+                f"choose from {sorted(_YUV_MATRICES)}"
+            )
+        m = _YUV_MATRICES[yuv_matrix]
+        self.yuv_matrix = yuv_matrix
         self.raw_h = int(raw_size[0])
         self.raw_w = int(raw_size[1])
         self.resize_size = list(resize_size)
+        self.y_offset = float(m["y_offset"])
+        self.y_scale = float(m["y_scale"])
+        self.a_vr = float(m["a_vr"])
+        self.a_ug = float(m["a_ug"])
+        self.a_vg = float(m["a_vg"])
+        self.a_ub = float(m["a_ub"])
         mean = torch.tensor(_IMAGENET_MEAN, dtype=torch.float32).view(1, 3, 1, 1)
         std = torch.tensor(_IMAGENET_STD, dtype=torch.float32).view(1, 3, 1, 1)
         self.register_buffer("pre_scale", 1.0 / (255.0 * std))
@@ -137,9 +173,10 @@ class P2PNetONNXFusedNV12(P2PNetONNX):
         # nearest upsample (ONNX-friendly; matches P2PNetNV12Detector)
         u = F.interpolate(u, size=(h, w), mode="nearest")
         v = F.interpolate(v, size=(h, w), mode="nearest")
-        r = y + _A_V_R * v
-        g = y - _A_U_G * u - _A_V_G * v
-        b = y + _A_U_B * u
+        y = self.y_scale * (y - self.y_offset)
+        r = y + self.a_vr * v
+        g = y - self.a_ug * u - self.a_vg * v
+        b = y + self.a_ub * u
         rgb = torch.cat([r, g, b], dim=1).clamp(0, 255)  # (1,3,H,W)
         rgb = F.interpolate(
             rgb, size=self.resize_size, mode="bilinear", align_corners=False
@@ -200,6 +237,12 @@ def main():
         help="bake NV12->RGB + resize + normalize into the graph "
         "(engine input becomes packed uint8 NV12 of size H*W*3//2)",
     )
+    parser.add_argument(
+        "--yuv-matrix",
+        choices=sorted(_YUV_MATRICES),
+        default="bt709-full",
+        help="NV12->RGB matrix when --fuse-nv12 (default: bt709-full)",
+    )
     args = parser.parse_args()
 
     assert Path(args.cfg).exists(), f"cfg not found: {args.cfg}"
@@ -207,6 +250,8 @@ def main():
     assert not (args.fuse_preprocess and args.fuse_nv12), (
         "--fuse-preprocess and --fuse-nv12 are mutually exclusive"
     )
+    if args.yuv_matrix != "bt709-full" and not args.fuse_nv12:
+        raise SystemExit("--yuv-matrix only applies with --fuse-nv12")
 
     device = args.device
     raw_h, raw_w = int(args.img_size[0]), int(args.img_size[1])
@@ -215,7 +260,7 @@ def main():
         nv12_len = raw_h * raw_w * 3 // 2
         print(
             f"[export] raw img-size=({raw_h},{raw_w}) -> input (1,{nv12_len}) uint8 NV12"
-            f" -> in-graph RGB resize to (1,3,{h},{w})"
+            f" -> in-graph RGB ({args.yuv_matrix}) resize to (1,3,{h},{w})"
         )
     elif args.fuse_preprocess:
         print(
@@ -232,7 +277,11 @@ def main():
 
     if args.fuse_nv12:
         wrapper = P2PNetONNXFusedNV12(
-            model, anchors, (raw_h, raw_w), (h, w)
+            model,
+            anchors,
+            (raw_h, raw_w),
+            (h, w),
+            yuv_matrix=args.yuv_matrix,
         ).eval()
         dummy = torch.randint(
             0, 256, (1, raw_h * raw_w * 3 // 2), dtype=torch.uint8, device=device

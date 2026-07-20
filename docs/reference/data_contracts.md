@@ -12,7 +12,7 @@
 | 取得元 | `GstNv12Capture.pull` / `PrefetchNv12Capture.pull` |
 | タプル | `(nv12, seq, pts)` |
 
-`seq` は採用フレームの通番（1 始まり）。`capture_fps` でスキップされたフレームは番号に入らない。`pts` は秒（float）。
+`seq` は採用フレームの通番（1 始まり）。`capture_fps` でスキップされたフレームは番号に入らない。`pts` は秒（float）、バッファに PTS が無いときは `None`。
 
 ## 検出結果
 

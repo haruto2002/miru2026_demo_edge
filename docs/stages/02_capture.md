@@ -85,10 +85,11 @@ v4l2src device=/dev/video0
 `capture_fps` は **videorate 要素ではなく** `pull()` 内の PTS スキップで実現しています（この RTSP+NV12 経路では Jetson 上で videorate が詰まりやすいため）。
 
 - `_min_frame_dt = 1 / capture_fps`
-- 前回採用 PTS からの経過が `_min_frame_dt * 0.85` 未満ならスキップして次を取る
+- 前回採用 PTS からの経過が `_min_frame_dt * 0.85` 未満ならスキップして次を取る（PTS を先に見て、捨てるフレームは map/copy しない）
+- PTS が欠落（`None`）のフレームは間引きせず常に採用
 - `capture_fps: null`（または未設定）なら全フレームを採用
 
-返り値の `nv12` は appsink バッファから `_host` へコピーしたのち、さらに `.copy()` した独立配列です（呼び出し側が保持しても次の pull で壊れない）。
+返り値の `nv12` は appsink バッファから 1 回 `.copy()` した独立配列です（呼び出し側が保持しても次の pull で壊れない）。calibration 有効時は射影変換後のバッファをさらに `.copy()` して返す。
 
 ### Prefetch
 
@@ -137,6 +138,6 @@ None (EOS):
 
 ## 関連コード
 
-- [`gst_io.py`](../../pipeline_jetson/components/edge/gst_io.py) — `GstNv12Capture._build_desc`, `pull`, `_pull_one`, `PrefetchNv12Capture`
+- [`gst_io.py`](../../pipeline_jetson/components/edge/gst_io.py) — `GstNv12Capture._build_desc`, `pull`, `_try_pull_sample`, `_copy_mapped_nv12`, `PrefetchNv12Capture`
 - [`edge_app.py`](../../pipeline_jetson/edge_app.py) — キャプチャ生成と `PullTimeout` 分岐
 - データ形状の約束: [data_contracts.md](../reference/data_contracts.md)

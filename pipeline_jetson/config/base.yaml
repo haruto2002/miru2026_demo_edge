@@ -26,7 +26,8 @@ display_color: [0, 0, 255]
 
 detector:
   _target_: processor.detector.p2pnet_trt_nv12.P2PNetTRTNV12Detector
-  engine_path: weights/p2pnet/cutout_fhd_nv12.engine
+  # NV12-fused FP16; BT.601 limited (rebuild with --yuv-matrix bt601-limited)
+  engine_path: weights/p2pnet/cutout_fhd_nv12_bt601lim.engine
   device: cuda:0
   threshold: 0.1
   img_size: [1080, 1920]    # (H, W)

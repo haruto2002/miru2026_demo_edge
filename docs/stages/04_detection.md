@@ -54,7 +54,7 @@ scale = (W / resize_W, H / resize_H)
 
 `--fuse-nv12` エクスポート時、グラフ内でおおむね次が行われる（詳細は [tensorrt_engine.md](../build/tensorrt_engine.md)）:
 
-- packed NV12 → RGB（BT.709 full-range 系の変換定数）
+- packed NV12 → RGB（`--yuv-matrix`: `bt601-limited` / `bt709-full`）
 - bilinear resize → ImageNet normalize
 - P2PNet 推論 + softmax 済み scores
 

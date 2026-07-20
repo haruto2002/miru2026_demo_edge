@@ -1,7 +1,8 @@
 """Jetson edge app: GStreamer NV12 capture -> detect -> MQTT (detections only).
 
 Tracking / map draw happen on the aggregation side so the edge can spend its
-budget on detection. Optional debug display overlays detections on BGR frames.
+budget on detection. Optional debug display overlays detections on BGR frames
+on a background thread so convert/draw/push do not stall detect or MQTT.
 
 Frames are never dropped (appsink backpressure). Optional prefetch overlaps
 appsink→host NV12 copy with detector.infer().
@@ -9,6 +10,7 @@ appsink→host NV12 copy with detector.infer().
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 
@@ -55,9 +57,10 @@ def dets_to_payload(dets: np.ndarray) -> dict:
 class PtsUnixEpochClock:
     """Map GStreamer PTS (relative) to Unix epoch while keeping PTS intervals.
 
-    The first sample anchors wall-clock time; later samples are
+    The first sample with a valid PTS anchors wall-clock time; later samples are
     ``t0 + (pts - pts0)`` so frame spacing follows media time, not
-    processing jitter.
+    processing jitter. ``pts is None`` returns ``time.time()`` without
+    updating the anchor.
     """
 
     def __init__(self) -> None:
@@ -68,7 +71,10 @@ class PtsUnixEpochClock:
         self._base_wall = None
         self._base_pts = None
 
-    def to_unix(self, pts: float) -> float:
+    def to_unix(self, pts: float | None) -> float:
+        # Missing media PTS: wall clock only; do not disturb the PTS anchor.
+        if pts is None:
+            return time.time()
         if self._base_wall is None or self._base_pts is None:
             self._base_wall = time.time()
             self._base_pts = float(pts)
@@ -91,6 +97,105 @@ def draw_detections(
             continue
         cv2.circle(bgr, (x, y), point_size, color, -1)
     return bgr
+
+
+class AsyncDetectionDisplay:
+    """Latest-only display worker: NV12+dets -> BGR overlay -> GstBgrDisplay.
+
+    Depth-1 queue; submit never blocks the detect/MQTT path. When display is
+    slower than inference, older pending frames are dropped.
+    """
+
+    def __init__(
+        self,
+        size: tuple[int, int],
+        sink: str = "nveglglessink",
+        threshold: float = 0.5,
+        point_size: int = 5,
+        color: tuple[int, int, int] = (0, 0, 255),
+    ):
+        self.w, self.h = int(size[0]), int(size[1])
+        self.threshold = float(threshold)
+        self.point_size = int(point_size)
+        self.color = color
+        self._display = GstBgrDisplay(size=(self.w, self.h), sink=sink, enabled=True)
+        self._q: queue.Queue = queue.Queue(maxsize=1)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.push_failed = False
+
+    def start(self) -> None:
+        self.stop()
+        self._stop.clear()
+        self.push_failed = False
+        self._display.start()
+        self._thread = threading.Thread(
+            target=self._worker, name="det-display", daemon=True
+        )
+        self._thread.start()
+        print("[edge] async display started (queue=1, latest-only)")
+
+    def stop(self) -> None:
+        self._stop.set()
+        try:
+            self._q.put_nowait(None)
+        except queue.Full:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._q.put_nowait(None)
+            except queue.Full:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        self._display.stop()
+        try:
+            while True:
+                self._q.get_nowait()
+        except queue.Empty:
+            pass
+
+    def submit(self, nv12: np.ndarray, dets: np.ndarray) -> None:
+        """Enqueue latest frame; drop any pending job. Never blocks."""
+        item = (nv12, dets)
+        try:
+            self._q.put_nowait(item)
+            return
+        except queue.Full:
+            pass
+        try:
+            self._q.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            self._q.put_nowait(item)
+        except queue.Full:
+            pass
+
+    def _worker(self) -> None:
+        while not self._stop.is_set():
+            try:
+                item = self._q.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if item is None:
+                break
+            nv12, dets = item
+            bgr = nv12_to_bgr(nv12, self.h, self.w)
+            draw_detections(
+                bgr,
+                dets,
+                threshold=self.threshold,
+                point_size=self.point_size,
+                color=self.color,
+            )
+            if not self._display.push(bgr):
+                self.push_failed = True
+                print("[edge] display push failed; display worker exit")
+                break
 
 
 class EdgeApp:
@@ -126,7 +231,7 @@ class EdgeApp:
             capture_fps: intentional downsample via videorate (e.g. 15 from 30fps)
             prefetch: overlap next-frame host copy with detection
             prefetch_queue_size: prefetched frames held for the consumer
-            display: if True, overlay dets and push to GStreamer sink (debug)
+            display: if True, async overlay of dets on a background thread
             display_sink: nveglglessink / nv3dsink / autovideosink / fakesink
             display_threshold: threshold for detection overlay
             display_point_size: circle radius for detection overlay
@@ -157,13 +262,16 @@ class EdgeApp:
             _maybe_instantiate(publisher) if publisher is not None else None
         )
         self.display_enabled = bool(display)
-        self.display_point_size = int(display_point_size)
-        self.display_threshold = display_threshold
-        self.display_color = display_color
-        self.display = GstBgrDisplay(
-            size=(self.w, self.h),
-            sink=display_sink,
-            enabled=self.display_enabled,
+        self.async_display: AsyncDetectionDisplay | None = (
+            AsyncDetectionDisplay(
+                size=(self.w, self.h),
+                sink=display_sink,
+                threshold=display_threshold,
+                point_size=display_point_size,
+                color=display_color,
+            )
+            if self.display_enabled
+            else None
         )
         self.report_every = report_every
         self.max_wall_seconds = max_wall_seconds
@@ -175,8 +283,8 @@ class EdgeApp:
 
     def run(self):
         self.capture.start()
-        if self.display_enabled:
-            self.display.start()
+        if self.async_display is not None:
+            self.async_display.start()
         if self.publisher is not None:
             self.publisher.start()
 
@@ -225,18 +333,8 @@ class EdgeApp:
                     )
                 t3 = time.perf_counter()
 
-                if self.display_enabled:
-                    bgr = nv12_to_bgr(nv12, self.h, self.w)
-                    draw_detections(
-                        bgr,
-                        dets,
-                        threshold=self.display_threshold,
-                        point_size=self.display_point_size,
-                        color=self.display_color,
-                    )
-                    if not self.display.push(bgr):
-                        print("[edge] display push failed; stopping")
-                        break
+                if self.async_display is not None:
+                    self.async_display.submit(nv12, dets)
                 t4 = time.perf_counter()
 
                 n += 1
@@ -281,8 +379,8 @@ class EdgeApp:
                     f"display={'on' if self.display_enabled else 'off'}"
                 )
                 print(summary)
-            if self.display_enabled:
-                self.display.stop()
+            if self.async_display is not None:
+                self.async_display.stop()
             self.capture.stop()
             if self.publisher is not None:
                 self.publisher.stop()

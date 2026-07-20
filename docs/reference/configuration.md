@@ -50,7 +50,7 @@ RTSP の認証情報は実ファイルに書かれることがあるが、文書
 | キー | 型 / 例 | 説明 |
 |------|---------|------|
 | `_target_` | `processor.detector.p2pnet_trt_nv12.P2PNetTRTNV12Detector` | 本番検出器 |
-| `engine_path` | `weights/p2pnet/cutout_fhd_nv12.engine` | NV12 融合 TRT エンジン |
+| `engine_path` | `weights/p2pnet/cutout_fhd_nv12_bt601lim.engine` | NV12 融合 TRT エンジン（BT.601 limited） |
 | `device` | `cuda:0` | Torch / CUDA デバイス |
 | `threshold` | `0.1` | 推論後処理のスコア閾値 |
 | `img_size` | `[1080, 1920]` | **(H, W)**。packed NV12 の高さ・幅 |

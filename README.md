@@ -15,9 +15,9 @@ RTSP / 動画
 
 - 入力は GStreamer で NV12 にデコードし、appsink の backpressure でフレームを落とさない
 - `calibration_enabled: true` のときは `calib_data/homography.txt` のホモグラフィを CUDA 上で適用し、射影後 NV12 を検出入力にする（BGR 変換なし）
-- 検出は NV12→RGB・正規化込みの TensorRT エンジン（`--fuse-nv12`）を使用
+- 検出は NV12→RGB・正規化込みの TensorRT エンジン（`--fuse-nv12`、既定マトリクスは BT.601 limited）を使用
 - MQTT トピック `camera/<camera_name>` に検出点 `(x, y, score)` を JSON で配信
-- 任意で検出オーバーレイを `nveglglessink` 等に表示可能
+- 任意で検出オーバーレイを表示可能（別スレッド・最新1枚のみ。検出/MQTT は止めない）
 
 実装レベルのフロー・工程別詳細・MQTT 契約などは [docs/](docs/README.md) を参照。
 
@@ -130,22 +130,23 @@ realtime/
 
 ```bash
 # 1. ONNX エクスポート（NV12→RGB・resize・正規化をグラフ内に融合）
+#    USB/多くのカメラは BT.601 limited。旧デフォルトは --yuv-matrix bt709-full
 uv run python trt_scripts/export_p2pnet_onnx.py \
   --img-size 1080 1920 \
   --fuse-nv12 \
-  --out weights/p2pnet/cutout_fhd_nv12.onnx \
+  --yuv-matrix bt601-limited \
+  --out weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx \
   --device cpu
 
 # 2. TensorRT エンジンビルド（FP16）
 uv run python trt_scripts/build_p2pnet_engine.py \
-  --onnx weights/p2pnet/cutout_fhd_nv12.onnx \
-  --engine weights/p2pnet/cutout_fhd_nv12.engine \
+  --onnx weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx \
+  --engine weights/p2pnet/cutout_fhd_nv12_bt601lim.engine \
   --fp16 \
   --workspace-gb 16
 ```
 
 `base.yaml` の `detector.engine_path` / `img_size` / `size` は、この解像度と一致させてください。
-
 ### （参考）BGR 融合エンジン
 
 `--fuse-preprocess` で uint8 BGR HWC 入力のエンジンも作れます。エッジ本番の GStreamer NV12 経路では使いません。
@@ -168,7 +169,7 @@ uv run python trt_scripts/build_p2pnet_engine.py \
 
 ```bash
 uv run python trt_scripts/bench_p2pnet_trt.py \
-  --engine weights/p2pnet/cutout_fhd_nv12.engine \
+  --engine weights/p2pnet/cutout_fhd_nv12_bt601lim.engine \
   --input_img_size 1080 1920
 
 uv run python trt_scripts/bench_p2pnet_ckpt.py \
@@ -210,6 +211,14 @@ gst-launch-1.0 -v \
   videoconvert ! \
   autovideosink sync=false
 ```
+
+```bash
+gst-launch-1.0 -v \
+  v4l2src device=/dev/video0 ! \
+  videoconvert ! \
+  autovideosink sync=false
+```
+
 
 接続のみ確認（表示なし）:
 

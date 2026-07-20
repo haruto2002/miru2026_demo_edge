@@ -8,7 +8,7 @@ GStreamer の PTS（メディア相対時刻）を、MQTT に載せる Unix epoc
 
 | | 内容 |
 |--|------|
-| 入力 | `pts`（秒）。`GstNv12Capture.pull` がバッファ PTS から算出 |
+| 入力 | `pts`（秒）または `None`。`GstNv12Capture.pull` がバッファ PTS から算出（`CLOCK_TIME_NONE` は `None`） |
 | 出力 | Unix epoch 秒（float）。`Publisher.publish_detections` の `timestamp` になる |
 
 ## 実装
@@ -20,17 +20,19 @@ GStreamer の PTS（メディア相対時刻）を、MQTT に載せる Unix epoc
 
 ### 変換式
 
-最初の有効サンプルで壁時計と PTS をアンカーし、以降は差分で進める。
+有効な PTS がある最初のサンプルで壁時計と PTS をアンカーし、以降は差分で進める。
 
 ```text
 timestamp = base_wall + (pts - base_pts)
 ```
 
-- `base_wall = time.time()`（最初のフレームをエッジが受け取った瞬間）
+- `base_wall = time.time()`（最初の **有効 PTS** フレームをエッジが受け取った瞬間）
 - `base_pts =` そのフレームの PTS
-- 以後のフレームは PTS が進んだ分だけ epoch が進む
+- 以後の有効 PTS フレームは PTS が進んだ分だけ epoch が進む
 
 これにより、検出や MQTT が遅くなっても **タイムスタンプ間隔は PTS 間隔のまま** です。処理遅延で「時刻が伸びる」ことはありません。
+
+PTS が欠落（`None`）のフレームは `time.time()` を返し、PTS アンカーは更新しません。
 
 ### アンカーの寿命
 
@@ -53,11 +55,12 @@ timestamp = base_wall + (pts - base_pts)
 
 ## 失敗・タイムアウト時の挙動
 
-- PTS が `Gst.CLOCK_TIME_NONE` の場合、キャプチャ側は `pts_s = 0.0` を返す。以降の相対計算は 0 起点になる
+- PTS が `Gst.CLOCK_TIME_NONE` の場合、キャプチャ側は `pts_s = None` を返す（`capture_fps` 間引きは行わず採用）
+- `PtsUnixEpochClock.to_unix(None)` は壁時計 `time.time()` を返し、PTS アンカーは触らない
 - 時計クラス自体は例外を投げない
 
 ## 関連コード
 
 - [`edge_app.py`](../../pipeline_jetson/edge_app.py) — `PtsUnixEpochClock`, `EdgeApp.run` 内の `epoch_clock.to_unix(pts)`
-- [`gst_io.py`](../../pipeline_jetson/components/edge/gst_io.py) — `_pull_one` での PTS → 秒変換
+- [`gst_io.py`](../../pipeline_jetson/components/edge/gst_io.py) — `pull` での PTS → 秒変換（欠落は `None`）
 - [`publisher.py`](../../pipeline_jetson/components/edge/publisher.py) — `timestamp` フィールドの意味を docstring で記載

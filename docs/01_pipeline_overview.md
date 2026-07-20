@@ -55,7 +55,7 @@ flowchart LR
 | 3 | 検出 | `detector.infer(nv12)` | packed NV12 → `Nx3 (x, y, score)` |
 | 4 | ペイロード化 | `dets_to_payload(dets)` | `{"point": [...], "bbox": []}` |
 | 5 | MQTT 配信 | `publisher.publish_detections(...)` | トピック `camera/<camera_name>` |
-| 6 | （任意）表示 | `nv12_to_bgr` → `draw_detections` → `display.push` | デバッグ用。本番は通常オフ |
+| 6 | （任意）表示 | `async_display.submit(nv12, dets)` → ワーカーで BGR/描画/push | デバッグ用。本番は通常オフ。検出/MQTT は待たない |
 
 起動時の開始順は capture →（display）→ publisher、終了時は逆順に近い形で display / capture / publisher を止めます。
 
@@ -63,9 +63,10 @@ flowchart LR
 
 1. **検出に資源を集中** — MQTT には検出点のみ。追跡 ID は含めない。
 2. **負荷時もフレームを捨てない** — appsink は `drop=false`。バッファ満杯時は上流がブロック（backpressure）する。意図的な間引きだけ `capture_fps`（PTS スキップ）で行う。
-3. **前処理はエンジン内** — 本番は `--fuse-nv12` の TensorRT エンジン。Python 側は H2D と実行が中心。
+3. **前処理はエンジン内** — 本番は `--fuse-nv12` の TensorRT エンジン（既定は BT.601 limited）。Python 側は H2D と実行が中心。
 4. **プリフェッチでコピーと推論を重ねる** — `PrefetchNv12Capture` が次フレームの host コピーをワーカースレッドで行い、`infer()` とオーバーラップさせる。
-5. **解像度の契約** — `size`（W, H）≡ `detector.img_size`（H, W）≡ エンジン入力サイズ。不一致は起動時または推論時に失敗する。
+5. **表示は検出を止めない** — `AsyncDetectionDisplay` が BGR 変換・描画・push を別スレッドで行い、深さ1で最新のみ残す。
+6. **解像度の契約** — `size`（W, H）≡ `detector.img_size`（H, W）≡ エンジン入力サイズ。不一致は起動時または推論時に失敗する。
 
 ## 主要モジュール対応表
 
@@ -73,7 +74,7 @@ flowchart LR
 |------|------|----------------|
 | エントリ | [`run.py`](../run.py) | `main` → `hydra.utils.instantiate` |
 | 設定 | [`pipeline_jetson/config/base.yaml`](../pipeline_jetson/config/base.yaml) + `jetsonN.yaml` | `_target_: EdgeApp` |
-| メインループ | [`pipeline_jetson/edge_app.py`](../pipeline_jetson/edge_app.py) | `EdgeApp` |
+| メインループ | [`pipeline_jetson/edge_app.py`](../pipeline_jetson/edge_app.py) | `EdgeApp`, `AsyncDetectionDisplay` |
 | キャプチャ / 表示 | [`pipeline_jetson/components/edge/gst_io.py`](../pipeline_jetson/components/edge/gst_io.py) | `GstNv12Capture`, `PrefetchNv12Capture`, `GstBgrDisplay` |
 | 検出 | [`processor/detector/p2pnet_trt_nv12.py`](../processor/detector/p2pnet_trt_nv12.py) | `P2PNetTRTNV12Detector` |
 | MQTT | [`pipeline_jetson/components/edge/publisher.py`](../pipeline_jetson/components/edge/publisher.py) | `Publisher` |
