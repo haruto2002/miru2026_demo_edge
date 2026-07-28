@@ -211,6 +211,7 @@ class EdgeApp:
         transport: str | None = None,
         max_buffers: int = 4,
         capture_fps=None,
+        drop_frames_when_lagging: bool = False,
         prefetch: bool = True,
         prefetch_queue_size: int = 2,
         display: bool = False,
@@ -232,6 +233,8 @@ class EdgeApp:
             publisher: MQTT Publisher (detections payload)
             max_buffers: appsink depth; full => block, never drop under load
             capture_fps: intentional downsample via videorate (e.g. 15 from 30fps)
+            drop_frames_when_lagging: if True, appsink drops older frames when
+                full to keep the pipeline near real time
             prefetch: overlap next-frame host copy with detection
             prefetch_queue_size: prefetched frames held for the consumer
             display: if True, async overlay of dets on a background thread
@@ -251,6 +254,7 @@ class EdgeApp:
             transport=transport,
             max_buffers=max_buffers,
             capture_fps=capture_fps,
+            drop_frames_when_lagging=drop_frames_when_lagging,
             calibration_enabled=calibration_enabled,
             calibration_homography_path=calibration_homography_path,
         )

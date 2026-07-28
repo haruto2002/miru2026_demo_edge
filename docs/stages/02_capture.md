@@ -75,7 +75,8 @@ v4l2src device=/dev/video0
 要点:
 
 - `parsebin` が H.264 / H.265 と depay を自動選択
-- `drop=false` + 有限 `max-buffers` → 満杯時はデコーダ側がブロック（backpressure）。負荷でフレームを捨てない
+- `drop_frames_when_lagging: false` のとき、`drop=false` + 有限 `max-buffers` → 満杯時はデコーダ側がブロック（backpressure）。負荷でフレームを捨てない
+- `drop_frames_when_lagging: true` のとき、`drop=true` → appsink 満杯時は古いフレームを捨てて最新寄りを維持する
 - `sync=false` → コンシューマの `pull` ペースで進む（パイプラインクロックに縛られない）
 - RTSP の `latency=200` は一部カメラ（i-PRO 等）で最初のフレーム到着を安定させるため
 - `calibration_enabled: true` のときは `calibration_homography_path` の 3x3 行列を読み込み、Y/UV 平面を CUDA 上で射影変換してから検出器へ渡す
@@ -120,6 +121,7 @@ None (EOS):
 | `size` | `[W, H]`。エンジン入力と一致必須 |
 | `transport` | RTSP 必須。本番は `tcp` 推奨 |
 | `max_buffers` | appsink 深さ（例: `4`） |
+| `drop_frames_when_lagging` | `true` で古いフレームを捨ててリアルタイム性を優先 |
 | `capture_fps` | 意図的間引き（例: `15`）。`null` で全フレーム |
 | `calibration_enabled` | ホモグラフィ射影変換の ON/OFF |
 | `calibration_homography_path` | 3x3 ホモグラフィ行列ファイル |

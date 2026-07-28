@@ -30,8 +30,9 @@ RTSP の認証情報は実ファイルに書かれることがあるが、文書
 | `source` | `rtsp://USER:PASS@HOST:554/...` / 動画パス / `/dev/video0` | 入力ソース（機種 YAML） |
 | `size` | `[1920, 1080]` | **(W, H)**。NV12 出力・表示サイズ。エンジンと一致必須（`base.yaml`） |
 | `transport` | `tcp` | RTSP のプロトコル。RTSP 時は必須（機種 YAML） |
-| `max_buffers` | `4` | appsink 深さ。満杯時は backpressure |
+| `max_buffers` | `4` | appsink 深さ |
 | `capture_fps` | `15` または `null` | PTS スキップによる間引き。`null` で全フレーム |
+| `drop_frames_when_lagging` | `true` / `false` | `true` で appsink `drop=true`。満杯時に古いフレームを捨ててリアルタイム性を優先 |
 | `calibration_enabled` | `true` | `true` でホモグラフィ射影変換を有効化（機種 YAML） |
 | `calibration_homography_path` | `calib_data/homography.txt` | 3x3 ホモグラフィ行列ファイル（機種 YAML） |
 | `prefetch` | `true` | 次フレーム host コピーと推論のオーバーラップ |

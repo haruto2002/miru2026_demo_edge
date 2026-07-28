@@ -58,6 +58,7 @@ class GstNv12Capture:
         transport: Optional[str] = None,
         max_buffers: int = 4,
         capture_fps: Optional[float] = None,
+        drop_frames_when_lagging: bool = False,
         calibration_enabled: bool = False,
         calibration_homography_path: Optional[str] = None,
     ):
@@ -71,6 +72,9 @@ class GstNv12Capture:
             capture_fps: if set, keep frames by PTS so output ≈ this rate
                 (e.g. 15 from a 30fps camera). Done in pull(), not videorate —
                 videorate stalls this RTSP+NV12 path on Jetson.
+            drop_frames_when_lagging: if True, appsink drops older frames when
+                full so the consumer stays near real time instead of
+                accumulating latency.
             calibration_enabled: if True, apply homography warp after capture
             calibration_homography_path: 3x3 matrix text file for calibration
         """
@@ -84,6 +88,7 @@ class GstNv12Capture:
         self.capture_fps = (
             float(capture_fps) if capture_fps is not None and capture_fps > 0 else None
         )
+        self.drop_frames_when_lagging = bool(drop_frames_when_lagging)
         self._min_frame_dt = (
             1.0 / self.capture_fps if self.capture_fps is not None else None
         )
@@ -116,7 +121,9 @@ class GstNv12Capture:
     def _nv12_tail(self, caps: str) -> str:
         return (
             f"{caps} ! appsink name=sink emit-signals=false "
-            f"max-buffers={self.max_buffers} drop=false sync=false"
+            f"max-buffers={self.max_buffers} "
+            f"drop={'true' if self.drop_frames_when_lagging else 'false'} "
+            f"sync=false"
         )
 
     def _build_desc(self) -> str:
@@ -144,6 +151,7 @@ class GstNv12Capture:
         else:
             fps_note = "capture_fps=native"
         # drop=false + finite max-buffers => backpressure under load
+        # drop=true  + finite max-buffers => keep latest, avoid latency buildup
         # sync=false => pull paced by the consumer, not the pipeline clock
         self._fps_note = fps_note
         if self.is_usb:
@@ -175,10 +183,11 @@ class GstNv12Capture:
         self._eos = False
         self._last_kept_pts = None
         log.info(
-            "[GST-capture] started  %sx%s NV12  max-buffers=%s drop=false  %s  %s",
+            "[GST-capture] started  %sx%s NV12  max-buffers=%s drop=%s  %s  %s",
             self.w,
             self.h,
             self.max_buffers,
+            "true" if self.drop_frames_when_lagging else "false",
             self._fps_note,
             self._calib_note,
         )
