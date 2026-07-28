@@ -6,7 +6,7 @@ _recursive_: false
 
 size: [1920, 1080]          # (W, H) — must match NV12-fused engine
 max_buffers: 4              # appsink depth; with drop=true, old frames are discarded when full
-capture_fps: 15             # keep ~15fps by PTS skip (30fps cam); null = every frame
+capture_fps: 10             # keep ~15fps by PTS skip (30fps cam); null = every frame
 drop_frames_when_lagging: true   # appsink drop=true; prefer freshness over backlog
 
 report_every: 30
