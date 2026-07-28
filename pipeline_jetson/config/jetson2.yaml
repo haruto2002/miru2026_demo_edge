@@ -5,7 +5,7 @@ extends: base.yaml
 source: /dev/video0          # USB (V4L2) camera device
 # transport: tcp              # RTSP: tcp is more reliable on this camera (udp SETUP was 503)
 
-calibration_enabled: true
+calibration_enabled: false
 calibration_homography_path: calib_data/homography.txt
 
 publisher:

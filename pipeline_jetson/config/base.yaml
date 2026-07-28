@@ -20,8 +20,8 @@ display: false
 # Needs X11: export DISPLAY=:1  (this machine's GUI session)
 # Alternatives: nv3dsink / ximagesink
 display_sink: nveglglessink
-display_point_size: 10
-display_threshold: 0.5
+display_point_size: 5
+display_threshold: 0.4
 display_color: [0, 0, 255]
 
 detector:
