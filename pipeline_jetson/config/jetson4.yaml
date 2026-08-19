@@ -1,0 +1,13 @@
+extends: base.yaml
+
+# source: rtsp://soirt:Aist-Rwdc@192.168.0.11:554/ONVIF/MediaInput?profile=def_profile1
+# source: results/worldporter_fhd.mp4
+source: /dev/video0          # USB (V4L2) camera device
+# transport: tcp              # RTSP: tcp is more reliable on this camera (udp SETUP was 503)
+
+calibration_enabled: false
+calibration_homography_path: calib_data/homography.txt
+
+publisher:
+  camera_name: worldporter_partial_04
+  pc_name: jetson_04

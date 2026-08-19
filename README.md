@@ -14,9 +14,12 @@ RTSP / 動画
 ```
 
 - 入力は GStreamer で NV12 にデコードし、appsink の backpressure でフレームを落とさない
-- 検出は NV12→RGB・正規化込みの TensorRT エンジン（`--fuse-nv12`）を使用
+- `calibration_enabled: true` のときは `calib_data/homography.txt` のホモグラフィを CUDA 上で適用し、射影後 NV12 を検出入力にする（BGR 変換なし）
+- 検出は NV12→RGB・正規化込みの TensorRT エンジン（`--fuse-nv12`、既定マトリクスは BT.601 limited）を使用
 - MQTT トピック `camera/<camera_name>` に検出点 `(x, y, score)` を JSON で配信
-- 任意で検出オーバーレイを `nveglglessink` 等に表示可能
+- 任意で検出オーバーレイを表示可能（別スレッド・最新1枚のみ。検出/MQTT は止めない）
+
+実装レベルのフロー・工程別詳細・MQTT 契約などは [docs/](docs/README.md) を参照。
 
 ## 前提環境
 
@@ -44,11 +47,11 @@ uv sync
 集約 PC 側で MQTT ブローカが起動していることを確認してから実行します。
 
 ```bash
-# 推奨
-./run.sh
+# 推奨（引数は機種名: jetson1 … jetson4）
+./run.sh jetson1
 
 # または
-uv run python run.py --cfg pipeline_jetson/config/edge.yaml
+uv run python run.py --cfg pipeline_jetson/config/jetson1.yaml
 ```
 
 GUI 表示を使う場合は X11 の DISPLAY を設定します。
@@ -57,18 +60,19 @@ GUI 表示を使う場合は X11 の DISPLAY を設定します。
 export DISPLAY=:1
 ```
 
-### 主な設定（`pipeline_jetson/config/edge.yaml`）
+### 主な設定（`base.yaml` + `jetsonN.yaml`）
 
-| キー | 説明 |
-|------|------|
-| `source` | RTSP URL または動画パス |
-| `size` | `[W, H]`（エンジン入力と一致させる） |
-| `transport` | RTSP は `tcp` 推奨 |
-| `capture_fps` | カメラ 30fps から意図的に間引く場合（例: `15`） |
-| `prefetch` | 次フレームの NV12 ホストコピーと推論を重ねる |
-| `display` | 検出オーバーレイ表示の ON/OFF |
-| `detector.engine_path` | NV12 融合 TRT エンジン |
-| `publisher.broker_host` | 集約側 mosquitto のホスト |
+艦隊共通は `pipeline_jetson/config/base.yaml`、入力・キャリブ・MQTT 識別子などは `jetsonN.yaml`（`extends: base.yaml`）。キーの置き場の詳細は [docs/reference/configuration.md](docs/reference/configuration.md)。
+
+| キー | 置き場 | 説明 |
+|------|--------|------|
+| `source` / `transport` | 機種 | RTSP URL / 動画 / `/dev/video*`。RTSP は `tcp` 推奨 |
+| `calibration_*` | 機種 | ホモグラフィ射影変換 |
+| `publisher.camera_name` / `pc_name` | 機種 | MQTT トピック・client_id |
+| `display` | 機種（上書き） | 検出オーバーレイ。base 既定は `false` |
+| `size` / `detector.*` | base | 解像度・NV12 融合 TRT エンジン |
+| `capture_fps` / `prefetch` | base | 間引き・ホストコピーと推論の重ね |
+| `publisher.broker_host` | base | 集約側 mosquitto のホスト |
 
 ## MQTT ペイロード
 
@@ -99,7 +103,9 @@ realtime/
 ├── pyproject.toml               依存定義（uv）
 ├── pipeline_jetson/             Jetson エッジアプリ
 │   ├── edge_app.py              キャプチャ → 検出 → 配信のループ
-│   ├── config/edge.yaml         パイプライン設定
+│   ├── config/
+│   │   ├── base.yaml            艦隊共通設定
+│   │   └── jetsonN.yaml         機種固有（extends: base.yaml）
 │   └── components/edge/
 │       ├── gst_io.py            GStreamer NV12 キャプチャ / 表示
 │       ├── publisher.py         MQTT 配信
@@ -124,22 +130,23 @@ realtime/
 
 ```bash
 # 1. ONNX エクスポート（NV12→RGB・resize・正規化をグラフ内に融合）
+#    USB/多くのカメラは BT.601 limited。旧デフォルトは --yuv-matrix bt709-full
 uv run python trt_scripts/export_p2pnet_onnx.py \
   --img-size 1080 1920 \
   --fuse-nv12 \
-  --out weights/p2pnet/cutout_fhd_nv12.onnx \
+  --yuv-matrix bt601-limited \
+  --out weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx \
   --device cpu
 
 # 2. TensorRT エンジンビルド（FP16）
 uv run python trt_scripts/build_p2pnet_engine.py \
-  --onnx weights/p2pnet/cutout_fhd_nv12.onnx \
-  --engine weights/p2pnet/cutout_fhd_nv12.engine \
+  --onnx weights/p2pnet/cutout_fhd_nv12_bt601lim.onnx \
+  --engine weights/p2pnet/cutout_fhd_nv12_bt601lim.engine \
   --fp16 \
   --workspace-gb 16
 ```
 
-`edge.yaml` の `detector.engine_path` / `img_size` / `size` は、この解像度と一致させてください。
-
+`base.yaml` の `detector.engine_path` / `img_size` / `size` は、この解像度と一致させてください。
 ### （参考）BGR 融合エンジン
 
 `--fuse-preprocess` で uint8 BGR HWC 入力のエンジンも作れます。エッジ本番の GStreamer NV12 経路では使いません。
@@ -162,7 +169,7 @@ uv run python trt_scripts/build_p2pnet_engine.py \
 
 ```bash
 uv run python trt_scripts/bench_p2pnet_trt.py \
-  --engine weights/p2pnet/cutout_fhd_nv12.engine \
+  --engine weights/p2pnet/cutout_fhd_nv12_bt601lim.engine \
   --input_img_size 1080 1920
 
 uv run python trt_scripts/bench_p2pnet_ckpt.py \
@@ -171,9 +178,10 @@ uv run python trt_scripts/bench_p2pnet_ckpt.py \
 
 ## カメラ接続確認（GStreamer）
 
+### RTSP
 RTSP 形式: `rtsp://<user>:<pass>@<ip>:554/...`
 
-Jetson で映像まで確認:
+Jetsonで映像まで確認:
 
 ```bash
 gst-launch-1.0 -v \
@@ -192,3 +200,41 @@ gst-launch-1.0 -v \
   rtph265depay ! h265parse ! nvv4l2decoder ! \
   fakesink sync=false
 ```
+
+### USB
+
+Jetson で映像まで確認:
+
+```bash
+gst-launch-1.0 -v \
+  v4l2src device=/dev/video0 ! \
+  videoconvert ! \
+  autovideosink sync=false
+```
+
+```bash
+gst-launch-1.0 -v \
+  v4l2src device=/dev/video0 ! \
+  videoconvert ! \
+  autovideosink sync=false
+```
+
+
+接続のみ確認（表示なし）:
+
+```bash
+gst-launch-1.0 -v \
+  v4l2src device=/dev/video0 ! \
+  fakesink sync=false
+```
+
+## 詳細ドキュメント
+
+実装レベルのパイプライン説明は [docs/](docs/README.md) にあります。
+
+| 文書 | 内容 |
+|------|------|
+| [docs/01_pipeline_overview.md](docs/01_pipeline_overview.md) | 全体フローと設計原則 |
+| [docs/stages/](docs/stages/) | 工程別詳細（キャプチャ・検出・MQTT など） |
+| [docs/reference/](docs/reference/) | 設定・MQTT 契約・データ契約 |
+| [docs/build/tensorrt_engine.md](docs/build/tensorrt_engine.md) | ONNX / TensorRT エンジンビルド |

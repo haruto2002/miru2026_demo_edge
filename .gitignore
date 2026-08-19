@@ -16,3 +16,5 @@ results
 
 *.engine
 *.onnx
+
+calib_data/

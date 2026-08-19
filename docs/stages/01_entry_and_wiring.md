@@ -1,0 +1,85 @@
+# 工程: エントリと配線
+
+## 目的
+
+YAML 設定から `EdgeApp` とその依存コンポーネント（検出器・Publisher）を組み立て、メインループを開始する。
+
+## 入出力
+
+| | 内容 |
+|--|------|
+| 入力 | `--cfg` で指定する機種 YAML（例: `pipeline_jetson/config/jetson1.yaml`） |
+| 出力 | インスタンス化された `EdgeApp` が `run()` でパイプラインを駆動 |
+
+## 実装
+
+| 要素 | 場所 |
+|------|------|
+| CLI エントリ | [`run.py`](../../run.py) |
+| 起動シェル | [`run.sh`](../../run.sh) |
+| 設定 | [`pipeline_jetson/config/base.yaml`](../../pipeline_jetson/config/base.yaml) + [`jetsonN.yaml`](../../pipeline_jetson/config/) |
+| アプリ本体 | [`pipeline_jetson/edge_app.py`](../../pipeline_jetson/edge_app.py) の `EdgeApp` |
+
+### 起動チェーン
+
+```
+./run.sh jetson1
+  └─ uv run python run.py --cfg pipeline_jetson/config/jetson1.yaml
+       ├─ load_cfg: OmegaConf.merge(base.yaml, jetson1.yaml)
+       ├─ hydra.utils.instantiate(cfg)   # _target_: EdgeApp
+       │     ├─ detector  → P2PNetTRTNV12Detector(...)
+       │     └─ publisher → Publisher(...)
+       └─ app.run()
+```
+
+`run.py` は Hydra のフルアプリではなく、OmegaConf で YAML を読み `instantiate` する薄いローダです。機種 YAML の `extends: base.yaml` を同じディレクトリ基準でマージします。`_recursive_: false` のため、ネストした `detector` / `publisher` は `EdgeApp.__init__` 内の `_maybe_instantiate` で改めてインスタンス化されます。
+実行ログは `run.py` 起動時に timestamped logger を 1 回だけ設定し、各行の先頭にローカル時刻 `YYYY-MM-DD HH:MM:SS.mmm` を付けます。
+
+### `EdgeApp.__init__` での配線
+
+1. `GstNv12Capture(source, size, transport, max_buffers, capture_fps)` を生成
+2. `prefetch` が真なら `PrefetchNv12Capture` でラップ、偽なら生のキャプチャを使用
+3. `detector` / `publisher` を `instantiate`（または既にオブジェクトならそのまま）
+4. `display: true` のときだけ `AsyncDetectionDisplay` を生成（内部で `GstBgrDisplay`）。`false` なら `None` で変換・描画は走らない
+
+### `run()` 開始・終了順
+
+**開始**
+
+1. `capture.start()`
+2. `async_display` があれば `async_display.start()`
+3. `publisher` があれば `publisher.start()`
+4. `max_wall_seconds` が設定されていればタイマーで `request_stop()`
+
+**終了（`finally`）**
+
+1. `async_display` があれば `async_display.stop()`
+2. `capture.stop()`
+3. `publisher` があれば `publisher.stop()`
+
+## 設定キー
+
+トップレベルの `_target_` とアプリ引数は [configuration.md](../reference/configuration.md) を参照。配線に直結するもの:
+
+| キー | 役割 |
+|------|------|
+| `_target_` | `pipeline_jetson.edge_app.EdgeApp` |
+| `_recursive_` | `false`（ネストは手動 instantiate） |
+| `detector` | 検出器の `_target_` と引数 |
+| `publisher` | MQTT Publisher の `_target_` と引数 |
+| `prefetch` / `prefetch_queue_size` | キャプチャのラップ有無 |
+
+## 失敗・タイムアウト時の挙動
+
+- YAML のパス不正や `_target_` 解決失敗は起動時に例外
+- 検出器の `engine_path` 不在は `P2PNetTRTNV12Detector` 初期化時に assert
+- RTSP で `transport` 未指定は `GstNv12Capture` が `ValueError`
+- ファイル入力でパス不存在は `FileNotFoundError`
+
+ループ内のタイムアウト・EOS は [02_capture.md](02_capture.md) を参照。
+
+## 関連コード
+
+- [`run.py`](../../run.py) — `load_cfg`, `main`, `get_args`
+- [`pipeline_jetson/edge_app.py`](../../pipeline_jetson/edge_app.py) — `_maybe_instantiate`, `EdgeApp.__init__`, `EdgeApp.run`
+- [`pipeline_jetson/config/base.yaml`](../../pipeline_jetson/config/base.yaml) / [`jetsonN.yaml`](../../pipeline_jetson/config/)

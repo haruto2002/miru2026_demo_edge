@@ -3,11 +3,15 @@ import socket
 
 import paho.mqtt.client as mqtt
 
+from pipeline_jetson.components.edge.log_util import get_logger
+
 BROKER_HOST = "localhost"
 BROKER_PORT = 1883
 
 camera_name = "cam01"
 pc_name = socket.gethostname()
+
+log = get_logger(__name__)
 
 
 class Publisher:
@@ -68,9 +72,9 @@ class Publisher:
     def start(self):
         self.pub_client.connect(self.broker_host, self.broker_port, keepalive=60)
         self.pub_client.loop_start()
-        print(f"[PUB] started camera_name={self.camera_name}")
+        log.info("[PUB] started camera_name=%s", self.camera_name)
 
     def stop(self):
         self.pub_client.loop_stop()
         self.pub_client.disconnect()
-        print(f"[PUB] stopped camera_name={self.camera_name}")
+        log.info("[PUB] stopped camera_name=%s", self.camera_name)
